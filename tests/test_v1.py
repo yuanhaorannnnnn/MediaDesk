@@ -126,11 +126,12 @@ class StoreTests(unittest.TestCase):
     def test_delete_with_files_is_limited_to_managed_video(self):
         mid=self.store.save_youtube({'url':'https://youtu.be/jNQXAC9IVRw'});self.store.job('one',mid,'完成','')
         root=self.store.media_dir;complete=root/'示例 [jNQXAC9IVRw].webm';partial=root/'示例 [jNQXAC9IVRw].f137.mp4.part';state=root/'示例 [jNQXAC9IVRw].mp4.ytdl';note=root/'示例 [jNQXAC9IVRw].txt';other=root/'其他 [dQw4w9WgXcQ].webm';outside=Path(self.tmp.name)/'outside.webm'
-        for f in (complete,partial,state,note,other,outside):f.write_text('keep or remove')
+        more_media=[root/f'示例 [jNQXAC9IVRw].{ext}' for ext in ('ts','mka','M2TS','m4b','3gp','flv')]
+        for f in (complete,partial,state,note,other,outside,*more_media):f.write_text('keep or remove')
         (root/'link [jNQXAC9IVRw].mp4').symlink_to(outside);self.store.set_path(mid,complete)
         downloader.Downloads(self.store,lambda _:None).delete('one',True)
         self.assertEqual(self.store.jobs(),[]);self.assertIsNone(self.store.get(mid)['path'])
-        for f in (complete,partial,state):self.assertFalse(f.exists())
+        for f in (complete,partial,state,*more_media):self.assertFalse(f.exists())
         for f in (note,other,outside,root/'link [jNQXAC9IVRw].mp4'):self.assertTrue(f.exists())
 
     def test_delete_failure_keeps_task_and_file(self):

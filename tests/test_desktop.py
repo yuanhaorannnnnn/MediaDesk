@@ -214,6 +214,39 @@ class DesktopTests(unittest.TestCase):
                 open_folder.assert_called_once_with('favorites','7','B 站收藏')
             self.window.discovery_choice.set_active_id('youtube');self.assertEqual(len(self.window.discovery_box.get_children()),2)
 
+    def test_settings_reuses_recent_account_status_and_manual_refresh_forces_request(self):
+        self.store.set_setting('bilibili_cookies',True)
+        def bili(kind,on_page,fid=''):on_page([{'name':'B 站用户'}])
+        with mock.patch('mediadesk.app.sources.list_youtube',return_value=[{'snippet':{'title':'YouTube 用户'}}]) as yt,mock.patch('mediadesk.app.bilibili.stream',side_effect=bili) as bs:
+            self.window.show_settings()
+            self.assertTrue(spin_until(lambda: all(self.window.account_status_widgets[x].get_text().startswith('已连接') for x in ('youtube','bilibili'))))
+            self.window.show_library();self.window.show_settings()
+            self.assertTrue(self.window.account_status_widgets['youtube'].get_text().startswith('已连接'))
+            self.assertEqual((yt.call_count,bs.call_count),(1,1))
+            self.window.check_account('youtube')
+            self.assertTrue(spin_until(lambda:yt.call_count==2))
+
+    def test_discovery_shows_partial_results_after_page_failure(self):
+        self.store.set_setting('bilibili_cookies',True)
+        def bili(kind,on_page,fid=''):
+            on_page([{'id':7,'title':'已读取收藏夹'}]);raise ValueError('网络中断')
+        with mock.patch('mediadesk.app.sources.list_youtube',return_value=[]),mock.patch('mediadesk.app.bilibili.stream',side_effect=bili):
+            self.window.show_discovery('collections')
+            self.assertTrue(spin_until(lambda:'读取未完成：网络中断' in self.window.discovery_status.get_text()))
+            self.assertEqual(len(self.window.discovery_box.get_children()),2)
+
+    def test_reopening_settings_reuses_inflight_account_check(self):
+        entered,release=threading.Event(),threading.Event()
+        def youtube(kind):
+            entered.set();release.wait(3);return [{'snippet':{'title':'YouTube 用户'}}]
+        try:
+            with mock.patch('mediadesk.app.sources.list_youtube',side_effect=youtube) as yt:
+                self.window.show_settings();self.assertTrue(entered.wait(2))
+                self.window.show_library();self.window.show_settings();self.assertEqual(yt.call_count,1)
+                release.set()
+                self.assertTrue(spin_until(lambda:self.window.account_status_widgets['youtube'].get_text().startswith('已连接')))
+        finally:release.set()
+
     def test_revoking_permission_discards_inflight_account_result(self):
         self.store.set_setting('bilibili_cookies',True);entered=threading.Event();release=threading.Event()
         def bili(kind,on_page,fid=''):

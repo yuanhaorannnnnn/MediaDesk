@@ -4,6 +4,7 @@ import json
 import math
 import subprocess
 import threading
+import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -142,7 +143,7 @@ class App(Gtk.Window):
         self.set_wmclass('mediadesk','MediaDesk')
         try:self.set_icon_from_file(str(Path(__file__).parent/'assets'/'mediadesk.svg'))
         except GLib.Error:pass
-        self.store=store or Store();self.downloader=downloader.Downloads(self.store,lambda jid:GLib.idle_add(self.download_update,jid));self.thumb_workers=ThreadPoolExecutor(max_workers=6);self.player=None;self.player_open=False;self.play_request=0;self.playing_online=False;self.fullscreened=False;self.theater=False;self.rows=[];self.row_index=0;self.source_kind='library';self.view_generation=0;self.setup_step=0;self.setup_authenticated=False;self.account_checks={'youtube':0,'bilibili':0}
+        self.store=store or Store();self.downloader=downloader.Downloads(self.store,lambda jid:GLib.idle_add(self.download_update,jid));self.thumb_workers=ThreadPoolExecutor(max_workers=6);self.player=None;self.player_open=False;self.play_request=0;self.playing_online=False;self.fullscreened=False;self.theater=False;self.rows=[];self.row_index=0;self.source_kind='library';self.view_generation=0;self.setup_step=0;self.setup_authenticated=False;self.account_checks={'youtube':0,'bilibili':0};self.account_cache={};self.account_inflight={};self.account_views={}
         root=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=0);self.add(root)
         head=Gtk.HeaderBar(title='MediaDesk');head.set_show_close_button(True);self.set_titlebar(head);self.header=head
         self.body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);root.pack_start(self.body,True,True,0)
@@ -182,11 +183,11 @@ class App(Gtk.Window):
         card.pack_start(label(f'{s+1} / 5  ·  首次设置','muted'),False,False,0);card.pack_start(label(titles[s],'title'),False,False,0)
         if s==0:card.pack_start(label('连接 YouTube 账号，或添加 YouTube 和 B 站视频链接。'),False,False,0)
         if s==1:
-            card.pack_start(label('使用 Google 授权读取订阅、喜欢的视频与播放列表；可以跳过，之后再连接。'),False,False,0)
+            card.pack_start(label('使用 Google 只读授权读取订阅、喜欢的视频与播放列表；请求会发送给 Google。可以跳过，之后再连接。'),False,False,0)
             card.pack_start(button('连接 Google 账号',self.authorize,True),False,False,0)
-            self.cookie_check=Gtk.CheckButton(label='允许下载时读取 Chrome 登录状态（Cookie）');self.cookie_check.set_active(self.store.setting('cookies',False));self.cookie_check.connect('toggled',lambda w:self.store.set_setting('cookies',w.get_active()));card.pack_start(self.cookie_check,False,False,0)
+            self.cookie_check=Gtk.CheckButton(label='允许解析、播放和下载时读取 Chrome 登录状态（Cookie）');self.cookie_check.set_active(self.store.setting('cookies',False));self.cookie_check.connect('toggled',lambda w:self.store.set_setting('cookies',w.get_active()));card.pack_start(self.cookie_check,False,False,0)
         if s==2:
-            dirs=safe_dirs();card.pack_start(label('仅扫描系统指定的媒体目录，不移动或重命名文件。'),False,False,0)
+            dirs=safe_dirs();card.pack_start(label('扫描所选目录及子目录，媒体文件路径会保存到本地库；不移动或重命名文件。'),False,False,0)
             self.dir_checks=[]
             for path in dirs:
                 cb=Gtk.CheckButton(label=str(path));cb.set_active(True);card.pack_start(cb,False,False,0);self.dir_checks.append((cb,path))
@@ -390,7 +391,7 @@ class App(Gtk.Window):
         self.content.pack_start(heading,False,False,0);status=label('正在读取…','muted');self.content.pack_start(status,False,False,0)
         box=Gtk.ListBox();box.set_selection_mode(Gtk.SelectionMode.NONE);scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.content.pack_start(scroll,True,True,0);self.content.show_all()
         self.discovery_choice=choice;self.discovery_box=box;self.discovery_status=status
-        entries=[];states={'youtube':'正在读取','bilibili':'正在读取'}
+        entries=[];states={'youtube':'正在读取','bilibili':'正在读取'};received={'youtube':0,'bilibili':0}
         def render(*_):
             if generation!=self.view_generation:return False
             for child in box.get_children():box.remove(child)
@@ -405,6 +406,7 @@ class App(Gtk.Window):
             status.set_text(f'{count} 项  ·  '+'  ·  '.join(('YouTube' if x=='youtube' else 'B 站')+'：'+states[x] for x in visible));return False
         choice.connect('changed',render)
         def accept(source,items):
+            received[source]+=sum(not item.get('placeholder') and not item.get('static') for item in items)
             def show():
                 if generation==self.view_generation:entries.extend(items);render()
                 return False
@@ -415,7 +417,7 @@ class App(Gtk.Window):
                 return False
             GLib.idle_add(update)
         def youtube():
-            if category=='collections':accept('youtube',[{'source':'youtube','name':'喜欢的视频','action':lambda *_:self.load_source('likes')}])
+            if category=='collections':accept('youtube',[{'source':'youtube','name':'喜欢的视频','static':True,'action':lambda *_:self.load_source('likes')}])
             try:
                 raw=sources.list_youtube('subscriptions' if category=='follow' else 'playlists');items=[]
                 for value in raw:
@@ -426,7 +428,7 @@ class App(Gtk.Window):
                         if cid and all(c.isalnum() or c in '_-' for c in cid):item['url']='https://www.youtube.com/channel/'+cid
                     items.append(item)
                 accept('youtube',items);finish('youtube')
-            except Exception as exc:finish('youtube',str(exc))
+            except Exception as exc:finish('youtube',('读取未完成：' if received['youtube'] else '读取失败：')+str(exc))
         def bili():
             if not self.store.setting('bilibili_cookies',False):
                 accept('bilibili',[{'source':'bilibili','name':'需要允许读取 B 站登录状态','placeholder':True,'action':lambda *_:self.load_bilibili('followings' if category=='follow' else 'folders')}]);finish('bilibili','未授权');return
@@ -442,7 +444,7 @@ class App(Gtk.Window):
                         items.append(item)
                     accept('bilibili',items)
                 bilibili.stream('followings' if category=='follow' else 'folders',page);finish('bilibili')
-            except Exception as exc:finish('bilibili',str(exc))
+            except Exception as exc:finish('bilibili',('读取未完成：' if received['bilibili'] else '读取失败：')+str(exc))
         threading.Thread(target=youtube,daemon=True).start();threading.Thread(target=bili,daemon=True).start()
 
     def load_bilibili(self,kind,fid='',title=''):
@@ -782,10 +784,16 @@ class App(Gtk.Window):
         b.get_child().get_children()[1].set_text(title+('  ●' if state=='connected' else '  ○'))
         b.set_tooltip_text(text);b.get_accessible().set_name(title+' · '+text)
 
-    def check_account(self,source):
+    def check_account(self,source,force=True):
         if source=='bilibili' and not self.store.setting('bilibili_cookies',False):
-            self.account_checks[source]+=1;self.account_status_widgets[source].set_text(self.account_text(source));self.platform_status(source);return
-        self.account_checks[source]+=1;request=self.account_checks[source];generation=self.view_generation
+            self.account_checks[source]+=1;self.account_inflight.pop(source,None);self.account_cache.pop(source,None);self.account_status_widgets[source].set_text(self.account_text(source));self.platform_status(source);return
+        self.account_views[source]=self.view_generation
+        cached=self.account_cache.get(source)
+        if not force and cached and time.monotonic()-cached[0]<300:
+            _,state,error=cached;self.account_status_widgets[source].set_text(self.account_text(source,state,error));self.platform_status(source,state,error);return
+        if not force and source in self.account_inflight:
+            self.account_status_widgets[source].set_text(self.account_text(source,'checking'));self.platform_status(source,'checking');return
+        self.account_checks[source]+=1;request=self.account_checks[source];self.account_inflight[source]=request
         self.account_status_widgets[source].set_text(self.account_text(source,'checking'))
         self.platform_status(source,'checking')
         def fetch():
@@ -794,19 +802,22 @@ class App(Gtk.Window):
             values=[];bilibili.stream('status',values.extend);return values[0].get('name','') if values else ''
         def done(name):
             if request!=self.account_checks[source]:return False
+            self.account_inflight.pop(source,None);self.account_cache[source]=(time.monotonic(),'connected','')
             self.store.set_setting('account_'+source,{'name':name,'verified_at':datetime.now().strftime('%Y-%m-%d %H:%M')})
             self.platform_status(source,'connected')
-            if generation==self.view_generation:self.account_status_widgets[source].set_text(self.account_text(source,'connected'))
+            if self.account_views.get(source)==self.view_generation:self.account_status_widgets[source].set_text(self.account_text(source,'connected'))
             return False
         def failed(error):
             if request!=self.account_checks[source]:return False
+            self.account_inflight.pop(source,None)
             state='unknown'
             if source=='youtube' and '需要连接 YouTube' in error:
                 config=Path(os.environ.get('MEDIADESK_GOOGLE_CONFIG',str(Path.home()/'.config/youtube-readonly')))
                 state='expired' if (config/'token.json').exists() else 'unconnected'
             elif source=='youtube' and 'HTTP 401' in error:state='expired'
-            self.platform_status(source,state,error if state=='unknown' else '')
-            if generation==self.view_generation:self.account_status_widgets[source].set_text(self.account_text(source,state,error if state=='unknown' else ''))
+            error=error if state=='unknown' else '';self.account_cache[source]=(time.monotonic(),state,error)
+            self.platform_status(source,state,error)
+            if self.account_views.get(source)==self.view_generation:self.account_status_widgets[source].set_text(self.account_text(source,state,error))
             return False
         async_call(fetch,done,failed)
 
@@ -819,7 +830,7 @@ class App(Gtk.Window):
             theme=control.get_active_id()
             if theme:self.store.set_setting('theme',theme);self.apply_theme(theme)
         themes.connect('changed',change_theme);content.pack_start(themes,False,False,0);content.pack_start(Gtk.Separator(),False,False,4)
-        content.pack_start(label('账号与连接','section'),False,False,0);self.account_status_widgets={}
+        content.pack_start(label('账号与连接','section'),False,False,0);content.pack_start(label('账号读取及播放、下载会向对应平台发送必要请求。','muted'),False,False,0);self.account_status_widgets={}
         for source,title in [('youtube','YouTube'),('bilibili','B 站')]:
             card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);card.get_style_context().add_class('card');card.pack_start(label(title,'section'),False,False,0)
             state=label(self.account_text(source),'muted');self.account_status_widgets[source]=state;card.pack_start(state,False,False,0)
@@ -830,6 +841,7 @@ class App(Gtk.Window):
                 def change_bili(w):
                     self.store.set_setting('bilibili_cookies',w.get_active());self.check_account('bilibili')
                 bili.connect('toggled',change_bili);card.pack_start(bili,False,False,0)
+                card.pack_start(label('关闭后已开始的读取可能继续；已保存的数据仍保留。','muted'),False,False,0)
             actions.pack_start(button('刷新状态',lambda _,s=source:self.check_account(s)),False,False,0);card.pack_start(actions,False,False,0);content.pack_start(card,False,False,0)
         content.pack_start(Gtk.Separator(),False,False,4);content.pack_start(label('下载与播放','section'),False,False,0)
         check=Gtk.CheckButton(label='允许解析、播放和下载时读取 Chrome 登录状态（Cookie）');check.set_active(self.store.setting('cookies',False));check.connect('toggled',lambda w:self.store.set_setting('cookies',w.get_active()));content.pack_start(check,False,False,0)
@@ -838,13 +850,13 @@ class App(Gtk.Window):
             rb=Gtk.RadioButton.new_with_label_from_widget(group,title)
             if group is None:group=rb
             rb.set_active(self.store.setting('preference','quality')==key);rb.connect('toggled',lambda w,k=key:self.store.set_setting('preference',k) if w.get_active() else None);content.pack_start(rb,False,False,0)
-        content.pack_start(Gtk.Separator(),False,False,4);content.pack_start(label('本地媒体','section'),False,False,0);content.pack_start(label('只扫描选中的目录，不移动或重命名文件。','muted'),False,False,0)
+        content.pack_start(Gtk.Separator(),False,False,4);content.pack_start(label('本地媒体','section'),False,False,0);content.pack_start(label('扫描选中目录及子目录，媒体文件路径保存到本地库；不移动或重命名文件。','muted'),False,False,0)
         self.dir_checks=[];dirsbox=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);content.pack_start(dirsbox,False,False,0)
         for path in safe_dirs():
             cb=Gtk.CheckButton(label=str(path));cb.set_active(True);dirsbox.pack_start(cb,False,False,0);self.dir_checks.append((cb,path))
         actions=Gtk.Box(spacing=8);actions.pack_start(button('选择目录',lambda *_:self.choose_scan_dir(dirsbox)),False,False,0);actions.pack_start(button('扫描选中目录',self.scan),False,False,0);content.pack_start(actions,False,False,0)
         scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(content);self.clear_content();self.content.pack_start(label('设置','title'),False,False,0);self.content.pack_start(scroll,True,True,0);self.content.show_all()
-        self.check_account('youtube');self.check_account('bilibili')
+        self.check_account('youtube',force=False);self.check_account('bilibili',force=False)
     def on_destroy(self,*_):
         if self.player:self.player.close()
         self.thumb_workers.shutdown(wait=False,cancel_futures=True)

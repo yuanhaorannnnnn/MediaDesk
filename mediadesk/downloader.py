@@ -441,7 +441,7 @@ class Downloads:
                 if not media or not media.get('url'):raise ValueError('找不到视频来源，无法安全确定文件')
                 sid=identify_url(media['url'])['file_id'];root=self.store.media_dir.resolve()
                 retry=r'(?:\.retry-'+hashlib.sha256(jid.encode()).hexdigest()[:16]+r'-\d+)?'
-                pattern=re.compile(r'\['+re.escape(sid)+r'\]'+retry+r'\.(?:[A-Za-z0-9_-]+\.)*(?:mp4|mkv|webm|mov|avi|m4a|mp3|flac|ogg|opus|wav|aac|m4v|part|ytdl)(?:-Frag\d+)?$',re.IGNORECASE)
+                pattern=re.compile(r'\['+re.escape(sid)+r'\]'+retry+r'\.(?:[A-Za-z0-9_-]+\.)*(?:mp4|mkv|webm|mov|avi|m4a|mp3|flac|ogg|opus|wav|aac|m4v|ts|m2ts|mka|m4b|3gp|3g2|mpeg|mpg|flv|wmv|wma|aif|aiff|part|ytdl)(?:-Frag\d+)?$',re.IGNORECASE)
                 for path in root.iterdir():
                     if path.is_symlink() or not path.is_file() or not pattern.search(path.name):continue
                     path.unlink();self.store.clear_path_if_matches(mid,path)

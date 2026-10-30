@@ -1,0 +1,73 @@
+name: Ubuntu 24.04
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Build DEB
+        run: ./packaging/build-deb.sh
+
+      - name: Install package and test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends "./dist/mediadesk_$(cat VERSION)_all.deb" xvfb xauth desktop-file-utils
+
+      - name: Run offline tests
+        run: |
+          /usr/bin/python3 -W error::ResourceWarning -m unittest discover -s tests -p 'test_v1.py' -v
+          GDK_BACKEND=x11 xvfb-run -a /usr/bin/python3 -m unittest discover -s tests -p 'test_desktop.py' -v
+
+      - name: Check installed launcher
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/mediadesk-data
+          XDG_CONFIG_HOME: ${{ runner.temp }}/mediadesk-config
+        run: |
+          desktop-file-validate /usr/share/applications/mediadesk.desktop
+          set +e
+          GDK_BACKEND=x11 xvfb-run -a timeout 6s mediadesk >"$RUNNER_TEMP/mediadesk-launch.log" 2>&1
+          result=$?
+          set -e
+          if [ "$result" -ne 124 ]; then
+            cat "$RUNNER_TEMP/mediadesk-launch.log"
+            echo "Launcher exited early: $result"
+            exit 1
+          fi
+          test -s "$XDG_DATA_HOME/mediadesk/library.sqlite3"
+
+      - name: Verify uninstall preserves user data
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/mediadesk-data
+        run: |
+          sudo apt-get remove -y mediadesk
+          test ! -e /usr/bin/mediadesk
+          test -s "$XDG_DATA_HOME/mediadesk/library.sqlite3"
+
+      - name: Prepare checksum
+        run: |
+          cd dist
+          sha256sum "mediadesk_$(cat ../VERSION)_all.deb" > SHA256SUMS
+
+      - name: Upload tested package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mediadesk-ubuntu-24.04-${{ github.sha }}
+          path: |
+            dist/mediadesk_*.deb
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

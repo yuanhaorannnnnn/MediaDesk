@@ -1,0 +1,1 @@
+"""MediaDesk Ubuntu application."""

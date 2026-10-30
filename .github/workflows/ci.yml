@@ -71,3 +71,15 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
+
+      - name: Download artifact for verification
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mediadesk-ubuntu-24.04-${{ github.sha }}
+          path: ${{ runner.temp }}/mediadesk-artifact
+
+      - name: Verify downloaded artifact
+        run: |
+          cd "$RUNNER_TEMP/mediadesk-artifact"
+          sha256sum -c SHA256SUMS
+          dpkg-deb -f "mediadesk_$(cat "$GITHUB_WORKSPACE/VERSION")_all.deb" Package Version

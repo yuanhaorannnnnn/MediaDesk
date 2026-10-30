@@ -57,6 +57,10 @@ sha256sum -c SHA256SUMS && sudo apt install ./mediadesk_0.1.0_all.deb
 mediadesk
 ```
 
+开发版中，下载任务处于等待、下载中或暂停时，关闭窗口默认会询问是否最小化、退出并中断或取消；可以在设置中调整。最小化会保留应用进程，暂停的任务仍需手动继续。没有这些任务时关闭窗口会退出应用。已发布的 0.1.0 尚不包含该设置。
+
+如果安装后应用列表仍显示默认齿轮，可以先检查图标文件和桌面会话。曾在 Ubuntu X11 会话中观察到重启 GNOME Shell 后图标恢复；操作前请保存工作，其他环境尚未验证。
+
 程序使用 GTK + libVLC 和 X11；在 Wayland 桌面上需要可用的 XWayland。`0.1.0` 以 Ubuntu 24.04 为基线，其他系统或版本未验证。
 
 卸载程序：
@@ -87,7 +91,11 @@ sudo apt remove mediadesk
 
 首次连接 YouTube 需要 Google OAuth 桌面客户端配置，默认读取 `~/.config/youtube-readonly/client.json`；现有已授权令牌也复用该目录。可以通过 `MEDIADESK_GOOGLE_CONFIG` 调整。没有凭据时可跳过连接，手动添加链接或扫描本地文件；要连接账号须先提供自己的 Google OAuth 客户端配置。授权只请求只读 scope，浏览器 Cookie 是单独的可选下载设置。
 
+设置中的“断开连接”停止 MediaDesk 发起新的 YouTube 账号读取，并保留本地媒体和共享令牌；已开始的读取可能继续，其他使用该令牌的应用不受影响。重新连接可能复用已有令牌，不提供账号切换或撤销 Google 授权。B 站断开只关闭关注和收藏的 Chrome 登录状态读取，不退出 Chrome；播放与下载的 Cookie 选项需单独设置。
+
 Ubuntu 软件源中的 `yt-dlp` 版本可能过旧；程序优先使用 `MEDIADESK_YTDLP` 指定的程序，其次使用 `~/.local/share/youtube-download/bin/yt-dlp`，最后查找 PATH。用户应自行维护下载器并检查可用性。实际下载能力依赖站点、权限、网络、Node、FFmpeg 和浏览器 Keyring。
+
+播放时默认按空格切换播放和暂停；设置中可改为 K 或关闭。输入框及其他有键盘操作的控件获得焦点时，保留控件原有操作。
 
 B 站账号读取使用上述 yt-dlp 脚本的 Python 环境读取 Chrome Cookie；旧版 yt-dlp 可能无法识别新版 Chrome 的登录状态，遇到此情况请更新 yt-dlp。账号读取仅在用户允许后进行，可在设置中关闭。
 

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-30T07:07:09.893370+00:00",
+  "title": "Design System: MediaDesk",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "button-pressed",
+        "value": "inset 0 2px 4px rgba(0,0,0,0.20)",
+        "purpose": "普通按钮及媒体项按下状态；主要操作与侧栏另有透明度。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-transition",
+        "value": "background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+        "purpose": "按钮状态变化；reduced motion 支持待验证。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "detail-reflow",
+        "value": "680px"
+      }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "唱片封套＋编辑设计（试行）",
+    "overview": "封面、展示标题、色块页眉和分隔线构成内容索引；复审认可视觉识别度，同时认为表达偏克制，用户尚未进行最终视觉认可。",
+    "keyCharacteristics": [
+      "四套外观",
+      "媒体库多列封面，列数随窗口变化",
+      "主题侧栏及媒体库、设置和下载页色块页眉",
+      "详情窄宽度上下重排"
+    ],
+    "rules": [],
+    "dos": [
+      "保留封面原始比例，缺失时使用中性占位。",
+      "让图标按钮有可访问名称，状态有文字说明，并保持键盘焦点可见；这些是要求，不表示全部路径已通过验证。"
+    ],
+    "donts": [
+      "把示例内容呈现为真实数据，或把未下载、失效、缺失的文件显示为可用。",
+      "把当前试行样式或静态检查描述成用户视觉验收。"
+    ]
+  }
+}

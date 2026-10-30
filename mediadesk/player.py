@@ -30,11 +30,17 @@ _volume=api('libvlc_audio_set_volume',C.c_int,[PTR,C.c_int]);_mute=api('libvlc_a
 class Player(Gtk.Box):
     def __init__(self,volume=100,on_volume=None,on_state=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=8)
-        self.instance=_new(0,None)
+        # VLC 3.x's avcodec/VDPAU path can stall AV1; native dav1d handles it.
+        options=(C.c_char_p*1)(b'--codec=dav1d,any')
+        self.instance=_new(1,options)
         if not self.instance: raise RuntimeError('无法初始化 libVLC')
         self.player=_new_player(self.instance)
         if not self.player: _release(self.instance);raise RuntimeError('无法创建播放器')
-        self.area=Gtk.DrawingArea();self.area.set_size_request(360,270);self.area.set_hexpand(True);self.area.set_vexpand(True);self.area.connect('realize',self._realize)
+        self.closed=False
+        self.area=Gtk.DrawingArea();self.area.set_size_request(360,270);self.area.set_hexpand(True);self.area.set_vexpand(True);self.area.connect('realize',self._realize);self.area.connect('size-allocate',self._schedule_area_resize)
+        # VLC owns an opaque native surface; CSD's RGBA visual leaks through compositing.
+        self.area.set_visual(self.area.get_screen().get_system_visual())
+        self.area_height=270;self.area_resize_source=0;self.window_resize_handler=0;self.resize_window=None
         self.pack_start(self.area,True,True,0)
         controls=Gtk.Box(spacing=6);self.controls=controls;self.toggle=Gtk.Button();self.toggle.connect('clicked',lambda *_:_pause(self.player) if _state(self.player)==3 else _play(self.player));controls.pack_start(self.toggle,False,False,0)
         self._set_play_icon(False)
@@ -43,12 +49,26 @@ class Player(Gtk.Box):
         self.on_volume=on_volume;self.on_state=on_state;self.last_state=None;self.volume_button=Gtk.VolumeButton();self.volume_button.set_tooltip_text('音量（设为零可静音）');self.volume_button.get_accessible().set_name('音量');self.volume_button.set_value(max(0,min(100,int(volume)))/100);self.volume_button.connect('value-changed',self._change_volume);controls.pack_start(self.volume_button,False,False,0)
         self.volume_pending=True
         control_window=Gtk.EventBox();control_window.add(controls);self.pack_start(control_window,False,False,0)
-        self.source=GLib.timeout_add(500,self._tick);self.closed=False
+        self.source=GLib.timeout_add(500,self._tick)
 
     def _realize(self, area):
         window=area.get_window()
         if not isinstance(window,GdkX11.X11Window): raise RuntimeError('当前会话不是 X11；请通过启动器使用 XWayland')
         _set_xwindow(self.player,window.get_xid())
+        top=area.get_toplevel()
+        if self.window_resize_handler and self.resize_window:self.resize_window.disconnect(self.window_resize_handler);self.window_resize_handler=0
+        if isinstance(top,Gtk.Window):self.resize_window=top;self.window_resize_handler=top.connect('size-allocate',self._schedule_area_resize)
+
+    def _schedule_area_resize(self,*_):
+        if not self.closed and not self.area_resize_source:self.area_resize_source=GLib.idle_add(self._resize_area)
+
+    def _resize_area(self):
+        self.area_resize_source=0
+        if self.closed:return False
+        top=self.get_toplevel();window_height=top.get_allocated_height() if isinstance(top,Gtk.Window) else 0
+        cap=max(270,round(window_height*.65));height=max(270,min(round(self.area.get_allocated_width()*9/16),cap))
+        if height!=self.area_height:self.area_height=height;self.area.set_size_request(360,height)
+        return False
 
     def open(self,path):
         p=Path(path)
@@ -117,4 +137,7 @@ class Player(Gtk.Box):
 
     def close(self):
         if self.closed:return
-        self.closed=True;GLib.source_remove(self.source);_stop(self.player);_release_player(self.player);_release(self.instance)
+        self.closed=True;GLib.source_remove(self.source)
+        if self.area_resize_source:GLib.source_remove(self.area_resize_source);self.area_resize_source=0
+        if self.window_resize_handler and self.resize_window:self.resize_window.disconnect(self.window_resize_handler);self.window_resize_handler=0;self.resize_window=None
+        _stop(self.player);_release_player(self.player);_release(self.instance)

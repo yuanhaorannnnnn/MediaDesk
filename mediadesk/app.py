@@ -14,10 +14,19 @@ from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, Gio
 from .store import Store, youtube_id, identify_url
 from . import downloader, sources, bilibili
 from .player import Player
+from .preview import HoverPreview
 
 CSS=b'''*{font-family:Sans} window,dialog,headerbar{background:#11151a;color:#f2f5f4} list,list row,scrolledwindow,viewport{background:#11151a;color:#f2f5f4} label{color:#f2f5f4} button{background:#263137;color:#f2f5f4;border:1px solid #46575c;border-radius:6px;padding:7px} button:hover{background:#35434a} button:focus{outline:2px solid #7dd6d0;outline-offset:-2px} button.suggested-action{background:#7dd6d0;color:#102426;border:0} button.suggested-action label{color:#102426} entry,combobox,treeview{background:#1d242b;color:#f2f5f4} .sidebar{background:#171c22;border-right:1px solid #303b42} .sidebar button{background:transparent;border-color:transparent;padding:9px} .sidebar button:hover{background:#28323b} .sidebar button.selected{background:#2b3d41;border-left:3px solid #7dd6d0} .sidebar .nav-title{font-size:12px;color:#9eafb2;font-weight:bold} .muted{color:#b7c5c8} .title{font-size:25px;font-weight:bold} .section{font-size:18px;font-weight:bold} .card{background:#1d242b;padding:20px;border-radius:8px} button.media-card{background:#1d242b;border-color:#303b42;padding:0} button.media-card:hover{background:#28323b;border-color:#7dd6d0} .status{color:#b7c5c8;font-size:12px} label.media-title{font-size:15px;font-weight:600} .media-art{background:#263137;color:#9eafb2;border-radius:4px} scale.player-seek trough highlight{background-image:none;background-color:#7dd6d0;border-color:#7dd6d0;box-shadow:none} progressbar.job-progress progress{background-image:none;background-color:#7dd6d0;border-color:#7dd6d0;box-shadow:none} label.job-failed{color:#ffa6a0}'''
 
 LIGHT_CSS=b'''*{font-family:Sans} window,dialog,headerbar{background:#f6f8f7;color:#192c30} list,list row,scrolledwindow,viewport{background:#f6f8f7;color:#192c30} label{color:#192c30} button{background:#edf2f1;color:#192c30;border:1px solid #c4d2d0;border-radius:6px;padding:7px} button:hover{background:#dce9e7} button:focus{outline:2px solid #187d78;outline-offset:-2px} button.suggested-action{background:#247f78;color:#ffffff;border:0} button.suggested-action label{color:#ffffff} entry,combobox,treeview{background:#ffffff;color:#192c30} .sidebar{background:#eaf0ef;border-right:1px solid #cedbd9} .sidebar button{background:transparent;border-color:transparent;padding:9px} .sidebar button:hover{background:#d8e6e4} .sidebar button.selected{background:#cce4e1;border-left:3px solid #247f78} .sidebar .nav-title{font-size:12px;color:#536e6b;font-weight:bold} .muted{color:#536b6b} .title{font-size:25px;font-weight:bold} .section{font-size:18px;font-weight:bold} .card{background:#ffffff;padding:20px;border-radius:8px} button.media-card{background:#ffffff;border-color:#d3dfdd;padding:0} button.media-card:hover{background:#edf7f5;border-color:#247f78} .status{color:#536b6b;font-size:12px} label.media-title{font-size:15px;font-weight:600} .media-art{background:#e6eeec;color:#536e6b;border-radius:4px} scale.player-seek trough highlight{background-image:none;background-color:#247f78;border-color:#247f78;box-shadow:none} progressbar.job-progress progress{background-image:none;background-color:#247f78;border-color:#247f78;box-shadow:none} label.job-failed{color:#9c3733}'''
+
+
+def selection_css(accent,foreground):
+    return f'''checkbutton check:checked,radiobutton radio:checked{{background-image:none;background-color:{accent};border-color:{accent};color:{foreground}}}'''.encode()
+
+
+CSS+=selection_css('#7dd6d0','#102426')
+LIGHT_CSS+=selection_css('#247f78','#ffffff')
 
 
 def recolor(css,colors):
@@ -27,26 +36,127 @@ def recolor(css,colors):
 
 # Art movements inform the component color relationships; artwork remains unchanged.
 NABIS_CSS=recolor(CSS,{
-    '#11151a':'#241d2b','#f2f5f4':'#f8f0e8','#263137':'#493949','#46575c':'#725d6e',
-    '#35434a':'#5b4958','#7dd6d0':'#eac094','#102426':'#342117','#1d242b':'#382c3e',
+    '#11151a':'#1d1c23','#f2f5f4':'#f8f0e8','#263137':'#493949','#46575c':'#725d6e',
+    '#35434a':'#5b4958','#7dd6d0':'#eac094','#102426':'#342117','#1d242b':'#2b2932',
     '#171c22':'#302638','#303b42':'#665267','#28323b':'#52435a','#2b3d41':'#5b465d',
     '#9eafb2':'#dfc5bd','#b7c5c8':'#d9c8c9'
 })+b''' .sidebar .nav-title{background:#51405c;color:#f2ddc9;padding:4px 7px} .sidebar button.selected{border-left-width:4px} .card,button.media-card{border-radius:2px} button.media-card{border:2px solid #665267;border-bottom:4px solid #a77972} .media-art{border-radius:0}'''
 NEO_IMPRESSION_CSS=recolor(LIGHT_CSS,{
-    '#f6f8f7':'#f3f5ec','#192c30':'#243a44','#edf2f1':'#e5eee8','#c4d2d0':'#b6c9c5',
+    '#f6f8f7':'#f8f3e8','#192c30':'#243a44','#edf2f1':'#e5eee8','#c4d2d0':'#b6c9c5',
     '#dce9e7':'#d5e5da','#187d78':'#315d77','#247f78':'#315d77','#ffffff':'#fffef7',
     '#eaf0ef':'#e1ece4','#cedbd9':'#bdcfc6','#d8e6e4':'#d5e5da','#cce4e1':'#d7e8dc',
     '#536e6b':'#536c73','#536b6b':'#526b72','#d3dfdd':'#cbd7cc','#edf7f5':'#eaf1e6',
     '#e6eeec':'#e0ece5'
 })+b''' .sidebar button.selected{background-image:linear-gradient(to right,#d4e6d9 0%,#d4e6d9 38%,#e8ead8 38%,#e8ead8 70%,#efdfd6 70%,#efdfd6 100%)} .sidebar .nav-title{border-bottom:2px solid #a2bcb1;padding-bottom:4px} button.media-card{border-bottom:3px solid #a9bfb6} .card{border:1px solid #cbd7cc}'''
+
+def interaction_css(normal,primary_hover,primary_active,sidebar,card):
+    return f'''button{{transition:background-color 120ms ease,border-color 120ms ease,box-shadow 120ms ease}}
+    button:active{{background-image:none;background-color:{normal};box-shadow:inset 0 2px 4px rgba(0,0,0,0.20)}}
+    button.suggested-action:hover{{background-image:none;background-color:{primary_hover}}}
+    button.suggested-action:active{{background-image:none;background-color:{primary_active};box-shadow:inset 0 2px 4px rgba(0,0,0,0.25)}}
+    .sidebar button:active,.sidebar button.selected:active{{background-image:none;background-color:{sidebar};box-shadow:inset 0 2px 4px rgba(0,0,0,0.18)}}
+    button.media-card:active{{background-image:none;background-color:{card};box-shadow:inset 0 2px 4px rgba(0,0,0,0.20)}}'''.encode()
+
+CSS+=interaction_css('#1a2429','#a9ece6','#54afa9','#3d5558','#35434a')
+LIGHT_CSS+=interaction_css('#cadbd8','#2f948b','#1b625e','#b6d6d1','#d4eae6')
+NABIS_CSS+=interaction_css('#382938','#f4d4b2','#c3936c','#755b73','#69556c')
+NEO_IMPRESSION_CSS+=interaction_css('#c4d9d0','#42738b','#254b61','#bfd8c8','#d5e8dc')
+# Let the artwork and typography define the media shelf; reserve outlines for interaction.
+def shelf_css(surface,hover,outline,pressed):
+    return f'''button.media-card{{background-image:none;background-color:transparent;border:1px solid transparent;border-radius:5px}}
+    button.media-card:hover{{background-color:{hover};border-color:transparent}}
+    button.media-card:active{{background-color:{pressed}}}
+    button.media-card:focus{{outline:2px solid {outline};outline-offset:-2px}}
+    .media-art{{background-color:{surface}}}'''.encode()
+
+CSS=recolor(CSS,{'#11151a':'#171a1b','#171c22':'#1d2021','#1d242b':'#252a2a','#263137':'#303736','#303b42':'#39413e'})
+LIGHT_CSS=recolor(LIGHT_CSS,{'#f6f8f7':'#f4f3ee','#ffffff':'#fffef9'})
+CSS+=shelf_css('#292e30','#232a2a','#7dd6d0','#35434a')
+LIGHT_CSS+=shelf_css('#e7ebe7','#e9efeb','#187d78','#d4eae6')
+NABIS_CSS+=shelf_css('#4a3945','#473646','#eac094','#69556c')+b''' .sidebar .nav-title{background:transparent;color:#d9c8c9;padding:4px 0} button.media-card{border-bottom-width:1px} '''
+NEO_IMPRESSION_CSS+=shelf_css('#e1e9df','#e7eee5','#315d77','#d5e8dc')+b''' .sidebar button.selected{background-image:none;background-color:#d7e8dc} .sidebar .nav-title{border-bottom:0;padding-bottom:0} button.media-card{border-bottom-width:1px} '''
+# The library uses the typography and color blocks of a record-sleeve index.
+def editorial_css(rail,rail_ink,rail_muted,selected,selected_ink,hover,rule,banner,banner_ink):
+    return f''' *{{font-family:'Noto Sans CJK SC',Sans}}
+    button{{border-radius:4px}}
+    entry{{border-radius:4px}}
+    .card{{border:1px solid rgba(128,128,128,0.32);border-radius:4px}}
+    .media-art{{border-radius:0}}
+    .sidebar{{background:{rail};border:0}}
+    .sidebar label,.sidebar image{{color:{rail_ink}}}
+    .sidebar .nav-title{{color:{rail_muted};font-size:12px;padding:8px 8px 3px;background:transparent;border:0}}
+    .sidebar button{{border-radius:0;padding:9px 8px}}
+    .sidebar button:hover{{background-image:none;background-color:{hover}}}
+    .sidebar button.selected,.sidebar button.selected:active{{background-image:none;background-color:{selected};border:0}}
+    .sidebar button.selected label,.sidebar button.selected image{{color:{selected_ink}}}
+    .sidebar button:focus{{outline:2px solid {selected};outline-offset:-2px}}
+    .sidebar button.selected:focus{{outline-color:{selected_ink}}}
+    tooltip.background{{background-image:none;background-color:{rail};border:1px solid {rule}}}
+    tooltip label{{color:{rail_ink}}}
+    row.discovery-author{{border-bottom:1px solid rgba(128,128,128,0.38);padding:3px 0}}
+    row.discovery-author:hover{{background:{hover}}}
+    row.discovery-author:focus{{outline:2px solid {rule};outline-offset:-2px}}
+    menu.media-context{{background-image:none;background-color:{rail};border:1px solid {rule};padding:4px}}
+    menu.media-context menuitem{{color:{rail_ink};padding:5px 12px}}
+    menu.media-context menuitem label{{color:{rail_ink}}}
+    menu.media-context menuitem:hover,menu.media-context menuitem:selected{{background-color:{hover}}}
+    .editorial-heading{{background:{banner};padding:10px 16px}}
+    .editorial-heading > label{{color:{banner_ink}}}
+    button.library-filter{{padding:5px 12px;border-radius:0}}
+    button.library-filter:checked{{background-image:none;background-color:{selected};color:{selected_ink};border-color:{selected}}}
+    button.library-filter:checked label{{color:{selected_ink}}}
+    button.sort-heading{{background:transparent;border:0;padding:4px 0}}
+    button.sort-heading:focus{{outline:2px solid {rule};outline-offset:-2px}}
+    button.view-mode{{background-image:none;background-color:transparent;color:{banner_ink};border:1px solid {banner_ink};border-radius:0;padding:6px}}
+    button.view-mode image{{color:{banner_ink}}}
+    button.view-mode:hover{{background-color:rgba(0,0,0,0.18)}}
+    button.view-mode:checked{{background-image:none;background-color:{banner_ink};color:{banner};border-color:{banner_ink}}}
+    button.view-mode .detail-glyph{{color:{banner_ink};font-size:12px;font-weight:bold}}
+    button.view-mode:checked image,button.view-mode:checked .detail-glyph{{color:{banner}}}
+    button.view-mode:focus{{outline:2px solid {banner_ink};outline-offset:-2px}}
+    button.view-mode:checked:focus{{outline-color:{banner}}}
+    .title{{font-family:'Noto Serif CJK SC',serif;font-size:30px;font-weight:700}}
+    .editorial-heading .title{{font-size:27px;font-weight:700}}
+    separator.media-rule{{background:{rule};min-height:3px;margin-top:2px}}
+    label.media-title{{font-family:'Noto Sans CJK SC',Sans;font-size:15px;font-weight:700}}
+    .media-art.has-cover{{background:#171a1b}}
+    button.media-card{{border-radius:0}}
+    button.media-card:focus{{outline:2px solid {rule};outline-offset:-2px}}'''.encode()
+
+CSS+=editorial_css('#232933','#f9f4e9','#c7d1db','#f1d867','#192a4a','#354356','#eecf60','#163677','#f9f4e9')
+LIGHT_CSS+=editorial_css('#e9e3d8','#202b37','#526178','#24498d','#fffaf0','#d5d9db','#1e3973','#24498d','#fffaf0')
+NABIS_CSS+=editorial_css('#342c3b','#fff1e4','#e2c9be','#efc486','#422331','#514052','#e6ad72','#863f52','#fff1e4')
+NEO_IMPRESSION_CSS+=editorial_css('#cadfd7','#243a44','#4d6269','#a34735','#fff9ef','#b6d2c8','#a34735','#205f69','#f9f7eb')
+def editorial_actions_css(accent,ink,hover,pressed):
+    return f'''button.suggested-action{{background-image:none;background-color:{accent};color:{ink}}}
+    button.suggested-action label,button.suggested-action image{{color:{ink}}}
+    button.suggested-action:hover{{background-color:{hover}}}
+    button.suggested-action:active{{background-color:{pressed}}}
+    checkbutton check:checked,radiobutton radio:checked{{background-color:{accent};border-color:{accent};color:{ink}}}
+    scale.player-seek trough highlight,progressbar.job-progress progress{{background-color:{accent};border-color:{accent}}}'''.encode()
+
+CSS+=editorial_actions_css('#f1d867','#192a4a','#f8e89b','#d5b94f')
+LIGHT_CSS+=editorial_actions_css('#24498d','#fffaf0','#315ca6','#18376d')
+NABIS_CSS+=editorial_actions_css('#efc486','#422331','#f8d9ac','#c99365')
+NEO_IMPRESSION_CSS+=editorial_actions_css('#205f69','#f9f7eb','#317783','#174851')
+def media_row_css(line):
+    return f'''button.media-card.media-row{{border-bottom:1px solid {line}}}'''.encode()
+
+CSS+=media_row_css('#495051')
+LIGHT_CSS+=media_row_css('#c8cecb')
+NABIS_CSS+=media_row_css('#584957')
+NEO_IMPRESSION_CSS+=media_row_css('#b9cec4')
 THEMES={'dark':('深色',CSS,True),'light':('浅色',LIGHT_CSS,False),
-        'nabis':('纳比派 · 深色',NABIS_CSS,True),'neo-impressionism':('新印象主义 · 浅色',NEO_IMPRESSION_CSS,False)}
+        'nabis':('纳比派',NABIS_CSS,True),'neo-impressionism':('新印象主义',NEO_IMPRESSION_CSS,False)}
 
 
 def label(text='',css=None):
     w=Gtk.Label(label=text);w.set_xalign(0);w.set_line_wrap(True);w.set_selectable(False)
     if css:w.get_style_context().add_class(css)
     return w
+
+def page_heading(text):
+    box=Gtk.Box();box.get_style_context().add_class('editorial-heading');box.pack_start(label(text,'title'),True,True,0);return box
 
 def button(text,cb=None,primary=False):
     b=Gtk.Button(label=text)
@@ -111,39 +221,46 @@ def local_media_info(path):
 
 class MediaCover(Gtk.Overlay):
     """Fit images to a 16:9 frame without cropping their original proportions."""
-    def __init__(self):
+    def __init__(self,minimum_width=190):
         super().__init__()
-        self.pixbuf=None;self.cover_height=107;self.image_size=None
-        self.frame=Gtk.Box();self.frame.set_size_request(190,self.cover_height)
+        self.minimum_width=minimum_width;self.pixbuf=None;self.cover_height=round(minimum_width*9/16);self.image_size=None
+        self.frame=Gtk.Box();self.frame.set_size_request(minimum_width,self.cover_height)
         self.frame.get_style_context().add_class('media-art')
         self.frame.connect('size-allocate',self.resize_cover);self.add(self.frame)
         self.image=Gtk.Image.new_from_icon_name('video-x-generic-symbolic',Gtk.IconSize.DIALOG)
         self.image.get_style_context().add_class('muted');self.image.set_halign(Gtk.Align.CENTER);self.image.set_valign(Gtk.Align.CENTER)
-        self.add_overlay(self.image)
+        self.add_overlay(self.image);self.set_overlay_pass_through(self.image,True)
 
     def resize_cover(self,widget,allocation):
-        height=max(107,round(allocation.width*9/16))
+        height=max(round(self.minimum_width*9/16),round(allocation.width*9/16))
         if height!=self.cover_height:
-            self.cover_height=height;widget.set_size_request(190,height)
+            self.cover_height=height;GLib.idle_add(self.update_height)
         if self.pixbuf:
             scale=min(allocation.width/self.pixbuf.get_width(),height/self.pixbuf.get_height())
             size=(max(1,round(self.pixbuf.get_width()*scale)),max(1,round(self.pixbuf.get_height()*scale)))
             if size!=self.image_size:
                 self.image_size=size;self.image.set_from_pixbuf(self.pixbuf.scale_simple(*size,GdkPixbuf.InterpType.BILINEAR))
 
+    def update_height(self):
+        self.set_size_request(self.minimum_width,self.cover_height);self.frame.set_size_request(self.minimum_width,self.cover_height)
+        return False
+
     def set_cover(self,path):
-        self.pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,480,270,True);self.image_size=None
+        self.pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,480,270,True);self.frame.get_style_context().add_class('has-cover');self.image_size=None
         self.resize_cover(self.frame,self.frame.get_allocation())
 
 
 
 class App(Gtk.Window):
     def __init__(self,store=None):
-        super().__init__(title='MediaDesk');self.set_default_size(1180,760);self.connect('destroy',self.on_destroy);self.connect('key-press-event',self.on_key)
+        super().__init__(title='MediaDesk');self.set_default_size(1180,760);self.connect('delete-event',self.on_close);self.connect('destroy',self.on_destroy);self.connect('key-press-event',self.on_key);self.connect('key-release-event',self.on_key_release);self.connect('focus-out-event',self.reset_shortcut)
+        self.shortcut_pressed=False;self.shortcut_release_source=0
         self.set_wmclass('mediadesk','MediaDesk')
         try:self.set_icon_from_file(str(Path(__file__).parent/'assets'/'mediadesk.svg'))
         except GLib.Error:pass
-        self.store=store or Store();self.downloader=downloader.Downloads(self.store,lambda jid:GLib.idle_add(self.download_update,jid));self.thumb_workers=ThreadPoolExecutor(max_workers=6);self.player=None;self.player_open=False;self.play_request=0;self.playing_online=False;self.fullscreened=False;self.theater=False;self.rows=[];self.row_index=0;self.source_kind='library';self.view_generation=0;self.setup_step=0;self.setup_authenticated=False;self.account_checks={'youtube':0,'bilibili':0};self.account_cache={};self.account_inflight={};self.account_views={}
+        self.store=store or Store();self.downloader=downloader.Downloads(self.store,lambda jid:GLib.idle_add(self.download_update,jid));self.thumb_workers=ThreadPoolExecutor(max_workers=6);self.player=None;self.player_open=False;self.play_request=0;self.playing_online=False;self.fullscreened=False;self.theater=False;self.rows=[];self.row_index=0;self.source_kind='library';self.view_generation=0;self.setup_step=0;self.setup_authenticated=False;self.account_checks={'youtube':0,'bilibili':0};self.account_cache={};self.account_inflight={};self.account_views={};self.youtube_auth_generation=0
+        self.hover_preview=HoverPreview(self.store)
+        self.library_source='all';self.sort_column=None;self.sort_descending=False
         root=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=0);self.add(root)
         head=Gtk.HeaderBar(title='MediaDesk');head.set_show_close_button(True);self.set_titlebar(head);self.header=head
         self.body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);root.pack_start(self.body,True,True,0)
@@ -188,11 +305,11 @@ class App(Gtk.Window):
             self.cookie_check=Gtk.CheckButton(label='允许解析、播放和下载时读取 Chrome 登录状态（Cookie）');self.cookie_check.set_active(self.store.setting('cookies',False));self.cookie_check.connect('toggled',lambda w:self.store.set_setting('cookies',w.get_active()));card.pack_start(self.cookie_check,False,False,0)
         if s==2:
             dirs=safe_dirs();card.pack_start(label('扫描所选目录及子目录，媒体文件路径会保存到本地库；不移动或重命名文件。'),False,False,0)
-            self.dir_checks=[]
+            self.dir_checks=[];dirsbox=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);card.pack_start(dirsbox,False,False,0)
             for path in dirs:
-                cb=Gtk.CheckButton(label=str(path));cb.set_active(True);card.pack_start(cb,False,False,0);self.dir_checks.append((cb,path))
+                cb=Gtk.CheckButton(label=str(path));cb.set_active(True);dirsbox.pack_start(cb,False,False,0);self.dir_checks.append((cb,path))
             if not dirs:card.pack_start(label('未发现可安全扫描的默认目录。'),False,False,0)
-            card.pack_start(button('选择其他目录',lambda *_:self.choose_scan_dir(card)),False,False,0)
+            card.pack_start(button('选择其他目录',lambda *_:self.choose_scan_dir(dirsbox)),False,False,0)
             card.pack_start(button('扫描选中目录',self.scan),False,False,0)
         if s==3:
             card.pack_start(label('自动选择默认下载格式；需要时可查看其他格式。'),False,False,0)
@@ -217,12 +334,18 @@ class App(Gtk.Window):
         else:self.setup_step+=1;self.setup()
 
     def authorize(self,*_):
-        self.message('正在打开 Google 授权页面…')
+        self.message('正在检查 Google 授权…')
+        self.youtube_auth_generation+=1;request=self.youtube_auth_generation
         def done(_):
-            self.setup_authenticated=True;self.message('Google 授权完成，正在验证账号')
+            if request!=self.youtube_auth_generation:return False
+            self.store.set_setting('youtube_account_enabled',True);self.account_cache.pop('youtube',None)
+            self.setup_authenticated=True;self.message('正在验证 Google 账号…')
             if getattr(self,'account_status_widgets',None) and getattr(self,'active_nav','') in ('settings','platform-youtube','platform-bilibili'):self.check_account('youtube')
             return False
-        async_call(lambda:sources.list_youtube('auth'),done,self.fail)
+        def failed(error):
+            if request==self.youtube_auth_generation:self.fail(error)
+            return False
+        async_call(lambda:sources.list_youtube('auth'),done,failed)
 
     def choose_scan_dir(self, container):
         d=Gtk.FileChooserDialog(title='选择媒体目录',transient_for=self,action=Gtk.FileChooserAction.SELECT_FOLDER)
@@ -251,7 +374,7 @@ class App(Gtk.Window):
         side.pack_start(nav_button('新建列表','folder-new-symbolic',self.new_collection),False,False,0)
         side.pack_start(label('发现','nav-title'),False,False,0)
         add_nav('discover-follow','关注','avatar-default-symbolic',lambda:self.show_discovery('follow'))
-        add_nav('discover-collections','收藏与播放列表','emblem-favorite-symbolic',lambda:self.show_discovery('collections'))
+        add_nav('discover-collections','收藏与播放列表','user-bookmarks-symbolic',lambda:self.show_discovery('collections'))
         side.pack_start(label('平台','nav-title'),False,False,0)
         add_nav('platform-youtube','YouTube','video-x-generic-symbolic',lambda:self.show_settings())
         add_nav('platform-bilibili','B 站','video-x-generic-symbolic',lambda:self.show_settings())
@@ -272,6 +395,7 @@ class App(Gtk.Window):
         self.collection_box.show_all()
 
     def clear_content(self):
+        self.hover_preview.stop()
         self.view_generation+=1;self.play_request+=1
         if self.player:self.player.close();self.player=None
         self.jobs_visible=False
@@ -287,43 +411,192 @@ class App(Gtk.Window):
 
     def display_rows(self,title,rows,loading=False,query=''):
         self.rows=rows;self.rows_title=title;self.rows_query=query;self.clear_content()
-        heading=Gtk.Box(spacing=12);heading.pack_start(label(title,'title'),True,True,0);self.rows_count=label(f'{len(rows)} 项'+(' · 正在读取…' if loading else ''),'muted');heading.pack_end(self.rows_count,False,False,0);self.content.pack_start(heading,False,False,0)
+        snapshot=getattr(self,'collection_discovery_snapshot',None)
+        if snapshot and self.source_kind in ('likes','playlist-items','bili-favorites'):
+            back=button('← 返回收藏与播放列表',lambda *_:self.show_discovery('collections',snapshot));self.content.pack_start(back,False,False,0)
+        heading=Gtk.Box(spacing=12);heading.get_style_context().add_class('editorial-heading');heading.pack_start(label(title,'title'),True,True,0);self.rows_count=label(f'{len(rows)} 项'+(' · 正在读取…' if loading else ''),'muted');heading.pack_end(self.rows_count,False,False,0);self.content.pack_start(heading,False,False,0)
         if not rows and not loading:
-            empty=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);empty.set_valign(Gtk.Align.CENTER);empty.set_halign(Gtk.Align.CENTER)
-            empty.pack_start(Gtk.Image.new_from_icon_name('folder-videos-symbolic',Gtk.IconSize.DIALOG),False,False,0);empty.pack_start(label('这里还没有内容','section'),False,False,0);empty.pack_start(label('读取 YouTube 内容，或添加 YouTube、B 站视频链接。','muted'),False,False,0)
+            empty=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);empty.set_valign(Gtk.Align.START);empty.set_halign(Gtk.Align.START);empty.set_margin_top(48)
+            empty.pack_start(label('这里还没有内容','title'),False,False,0);empty.pack_start(label('读取 YouTube 内容，或添加 YouTube、B 站视频链接。','muted'),False,False,0)
             actions=Gtk.Box(spacing=8);actions.pack_start(button('收藏与播放列表',lambda *_:self.show_discovery('collections')),False,False,0);actions.pack_start(button('添加链接',self.add_url,True),False,False,0);empty.pack_start(actions,False,False,0);self.content.pack_start(empty,True,True,0);self.content.show_all();return
+        self.media_view=self.store.setting('media_view','grid')
+        if self.media_view not in ('grid','list','details'):self.media_view='grid'
+        view=Gtk.Box(spacing=0);self.view_buttons={};group=None
+        for key,title,icon in [('grid','网格视图','view-grid-symbolic'),('list','列表视图','view-list-bullet-symbolic'),('details','详细视图',None)]:
+            control=Gtk.RadioButton.new_from_widget(group);control.set_mode(False)
+            if icon:image=Gtk.Image.new_from_icon_name(icon,Gtk.IconSize.BUTTON)
+            else:
+                image=Gtk.Box(spacing=0);image.set_size_request(16,16)
+                for _ in range(2):
+                    glyph=Gtk.Label(label='≡');glyph.get_style_context().add_class('detail-glyph');image.pack_start(glyph,True,True,0)
+            control.add(image);control.get_style_context().add_class('view-mode')
+            control.set_tooltip_text(title);control.get_accessible().set_name(title);view.pack_start(control,False,False,0);self.view_buttons[key]=control
+            if group is None:group=control
+        self.view_buttons[self.media_view].set_active(True);heading.pack_end(view,False,False,0)
         search=Gtk.SearchEntry();search.set_placeholder_text('搜索当前列表的标题或频道');self.content.pack_start(search,False,False,0)
+        library_filter=getattr(self,'active_nav','')=='library'
+        if library_filter:
+            filters=Gtk.Box(spacing=0);self.source_buttons={};group=None
+            for key,text in [('all','全部'),('youtube','YouTube'),('bilibili','B 站'),('local','本地')]:
+                control=Gtk.RadioButton.new_from_widget(group);control.set_mode(False);control.add(Gtk.Label(label=text));control.get_style_context().add_class('library-filter');filters.pack_start(control,False,False,0);self.source_buttons[key]=control
+                if group is None:group=control
+            self.source_buttons[self.library_source].set_active(True);self.content.pack_start(filters,False,False,0)
         no_results=label('没有匹配的内容。','muted');no_results.set_no_show_all(True);self.content.pack_start(no_results,False,False,0)
-        box=Gtk.FlowBox();self.rows_box=box;box.set_selection_mode(Gtk.SelectionMode.NONE);box.set_homogeneous(True);box.set_min_children_per_line(1);box.set_max_children_per_line(4);box.set_column_spacing(12);box.set_row_spacing(12);box.set_valign(Gtk.Align.START)
-        box.set_filter_func(lambda child:search.get_text().strip().casefold() in child.search_text)
+        columns=Gtk.Box(spacing=12);columns.set_margin_start(12);columns.set_margin_end(12);columns.set_no_show_all(True)
+        self.sort_buttons={};self.detail_column_groups={key:Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL) for key in ('source','duration','state')}
+        for key,text,width in [('title','标题',None),('source','来源 / 频道',110),('duration','时长',55),('state','状态',72)]:
+            control=Gtk.Button();control.get_style_context().add_class('sort-heading');control.set_halign(Gtk.Align.FILL);control.set_tooltip_text('按'+text+'排序');control.get_accessible().set_name('按'+text+'排序');child=Gtk.Label();child.set_xalign(0);control.add(child)
+            if width:control.set_size_request(width,-1);self.detail_column_groups[key].add_widget(control)
+            columns.pack_start(control,width is None,width is None,0);control.show_all();self.sort_buttons[key]=(control,text,child)
+        def update_sort_labels():
+            for key,(control,text,child) in self.sort_buttons.items():
+                active=key==self.sort_column;arrow=(' ↓' if self.sort_descending else ' ↑') if active else ' ↕'
+                child.set_text(text+arrow);control.get_accessible().set_name('按'+text+'排序'+(('，降序' if self.sort_descending else '，升序') if active else ''))
+        update_sort_labels()
+        self.content.pack_start(columns,False,False,0)
+        box=Gtk.FlowBox();self.rows_box=box;box.set_selection_mode(Gtk.SelectionMode.NONE);box.set_homogeneous(True);box.set_min_children_per_line(1);box.set_max_children_per_line(4 if self.media_view=='grid' else 1);box.set_column_spacing(12);box.set_row_spacing(12 if self.media_view=='grid' else 2);box.set_valign(Gtk.Align.START)
+        box.set_filter_func(lambda child:search.get_text().strip().casefold() in child.search_text and (not library_filter or self.library_source=='all' or child.media_item.get('source')==self.library_source))
+        def sort_value(child):
+            item=child.media_item
+            if self.sort_column=='title':return (str(item.get('title') or '').casefold(),)
+            if self.sort_column=='source':return (str(item.get('source') or '').casefold(),str(item.get('channel') or '').casefold())
+            if self.sort_column=='duration':
+                d=item.get('duration');return (d,) if isinstance(d,(int,float)) and math.isfinite(d) and d>0 else None
+            if self.sort_column=='state':return (child.sort_state,)
+            return None
+        def compare(a,b,*_):
+            if not self.sort_column:return (a.row_index>b.row_index)-(a.row_index<b.row_index)
+            x,y=sort_value(a),sort_value(b)
+            if x is None or y is None:return (x is None)-(y is None)
+            result=(x>y)-(x<y)
+            return -result if self.sort_descending else result
+        box.set_sort_func(compare)
         def filter_rows(*_):
-            self.rows_query=search.get_text().strip();box.invalidate_filter();no_results.set_visible(bool(search.get_text().strip()) and not any(child.get_child_visible() for child in box.get_children()))
-        self.refresh_rows_filter=filter_rows;search.connect('search-changed',filter_rows);search.set_text(query)
-        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.content.pack_start(scroll,True,True,0);self.append_cards(rows,0);self.content.show_all()
+            self.rows_query=search.get_text().strip();box.invalidate_filter();no_results.set_visible(not any(child.get_child_visible() for child in box.get_children()) and (bool(self.rows_query) or (library_filter and self.library_source!='all')))
+        def search_changed(*_):self.hover_preview.stop();filter_rows()
+        self.refresh_rows_filter=filter_rows;search.connect('search-changed',search_changed);search.set_text(query)
+        if library_filter:
+            def change_source(control,source):
+                if control.get_active():self.hover_preview.stop();self.library_source=source;filter_rows()
+            for key,control in self.source_buttons.items():control.connect('toggled',change_source,key)
+        def change_sort(_,key):
+            self.hover_preview.stop()
+            if self.sort_column==key:self.sort_descending=not self.sort_descending
+            else:self.sort_column=key;self.sort_descending=False
+            update_sort_labels();box.invalidate_sort()
+        for key,(control,_,_) in self.sort_buttons.items():control.connect('clicked',change_sort,key)
+        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.content.pack_start(scroll,True,True,0);self.detail_source_chars=8
+        def set_grid_columns(width):
+            if self.media_view=='grid':box.set_max_children_per_line(max(4,width//500))
+            return False
+        def resize_grid(_,allocation):
+            if self.media_view=='grid' and box.get_max_children_per_line()!=max(4,allocation.width//500):
+                GLib.idle_add(set_grid_columns,allocation.width)
+            if self.media_view=='details':
+                cap=max(8,min(24,8+max(0,allocation.width-450)//45))
+                if cap!=self.detail_source_chars:
+                    self.detail_source_chars=cap
+                    def resize_sources():
+                        if self.rows_box is box and self.media_view=='details':
+                            for row in box.get_children():row.get_child().get_child().get_children()[1].set_max_width_chars(self.detail_source_chars)
+                        return False
+                    GLib.idle_add(resize_sources)
+        scroll.connect('size-allocate',resize_grid)
+        def change_view(control,selected):
+            if not control.get_active() or selected==self.media_view:return
+            self.media_view=selected;self.store.set_setting('media_view',selected)
+            box.set_max_children_per_line(max(4,scroll.get_allocated_width()//500) if selected=='grid' else 1);box.set_row_spacing(12 if selected=='grid' else 2)
+            columns.set_visible(selected=='details')
+            self.hover_preview.stop()
+            for child in box.get_children():box.remove(child)
+            self.append_cards(self.rows,0)
+        for key,control in self.view_buttons.items():control.connect('toggled',change_view,key)
+        self.append_cards(rows,0);self.content.show_all();columns.set_visible(self.media_view=='details')
 
     def append_cards(self,rows,start):
         box=self.rows_box
         for i,item in enumerate(rows,start):
-            card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);card.set_border_width(9);card.set_size_request(190,-1)
-            artwork=MediaCover();card.pack_start(artwork,False,False,0)
-            if item.get('thumbnail'):self.load_art(artwork,item['thumbnail'])
-            t=label(item.get('title') or '未命名','media-title');t.set_max_width_chars(24);t.set_lines(2);t.set_ellipsize(3);t.set_tooltip_text(item.get('title') or '未命名');card.pack_start(t,False,False,0)
             origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站'}.get(item.get('source'),'其他来源');channel=item.get('channel');state=('本地可用' if Path(item['path']).is_file() else '文件缺失') if item.get('path') else '未下载'
             if item.get('unavailable'):state='来源已失效'+(' · 本地可用' if item.get('path') and Path(item['path']).is_file() else '')
-            if channel:
-                creator=label(channel,'muted');creator.set_max_width_chars(24);creator.set_ellipsize(3);creator.set_tooltip_text(channel);card.pack_start(creator,False,False,0)
-            desc=label(' · '.join((origin,state)),'muted');desc.set_max_width_chars(24);desc.set_ellipsize(3);desc.set_tooltip_text(desc.get_text());card.pack_start(desc,False,False,0)
+            if self.media_view=='grid':
+                card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7);card.set_border_width(6);card.set_size_request(210,-1)
+                artwork=MediaCover(190);card.pack_start(artwork,False,False,0)
+                if item.get('thumbnail'):
+                    if self.source_kind=='creator-local':self.load_cached_art(artwork,item['thumbnail'])
+                    else:self.load_art(artwork,item['thumbnail'])
+                details=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5);card.pack_start(details,False,False,0)
+                rule=Gtk.Separator();rule.get_style_context().add_class('media-rule');details.pack_start(rule,False,False,0)
+                t=label(item.get('title') or '未命名','media-title');t.set_max_width_chars(28);t.set_lines(2);t.set_ellipsize(3);t.set_tooltip_text(item.get('title') or '未命名');details.pack_start(t,False,False,0)
+                if channel:
+                    creator=label(channel,'muted');creator.set_max_width_chars(24);creator.set_ellipsize(3);creator.set_tooltip_text(channel);details.pack_start(creator,False,False,0)
+                desc=label(' · '.join((origin,state)),'muted');desc.set_max_width_chars(24);desc.set_ellipsize(3);desc.set_tooltip_text(desc.get_text());details.pack_start(desc,False,False,0)
+            else:
+                card=Gtk.Box(spacing=12);card.set_border_width(8)
+                title_text=item.get('title') or '未命名';t=label(title_text,'media-title');t.set_line_wrap(False);t.set_ellipsize(3);t.set_tooltip_text(title_text);card.pack_start(t,True,True,0)
+                if self.media_view=='details':
+                    duration=item.get('duration');duration_text='—'
+                    if isinstance(duration,(int,float)) and math.isfinite(duration) and duration>0:
+                        seconds=int(duration);duration_text=f'{seconds//3600}:{seconds%3600//60:02d}:{seconds%60:02d}' if seconds>=3600 else f'{seconds//60}:{seconds%60:02d}'
+                    for key,value,width in [('source',' · '.join(x for x in (origin,channel) if x),110),('duration',duration_text,55),('state',state,72)]:
+                        field=label(value,'muted');field.set_line_wrap(False);field.set_ellipsize(3);field.set_max_width_chars(self.detail_source_chars if key=='source' else 8);field.set_tooltip_text(value);field.set_size_request(width,-1);self.detail_column_groups[key].add_widget(field);card.pack_start(field,False,False,0)
+                else:
+                    summary_text=' · '.join(x for x in (channel,origin,state) if x);summary=label(summary_text,'muted');summary.set_line_wrap(False);summary.set_ellipsize(3);summary.set_max_width_chars(24);summary.set_tooltip_text(summary_text);card.pack_start(summary,False,False,0)
             b=Gtk.Button();b.get_style_context().add_class('media-card');b.connect('clicked',lambda _,idx=i:self.open_row(idx));b.add(card)
-            child=Gtk.FlowBoxChild();child.search_text=(str(item.get('title') or '')+' '+str(item.get('channel') or '')).casefold();child.add(b);box.add(child)
+            if self.media_view!='grid':b.get_style_context().add_class('media-row')
+            b.get_accessible().set_description('右键或 Shift+F10 打开作品操作')
+            def context_press(widget,event,idx=i):
+                if event.button==3:self.show_media_menu(widget,idx,event);return True
+                return False
+            b.connect('button-press-event',context_press)
+            b.connect('popup-menu',lambda widget,idx=i:self.show_media_menu(widget,idx))
+            if self.media_view=='grid' and (self.source_kind!='creator-local' or (item.get('path') and Path(item['path']).is_file())):self.hover_preview.track(b,artwork,item)
+            child=Gtk.FlowBoxChild();child.row_index=i;child.media_item=item;child.sort_state=3 if item.get('unavailable') else {'本地可用':0,'未下载':1,'文件缺失':2}[state];child.search_text=(str(item.get('title') or '')+' '+str(item.get('channel') or '')).casefold();child.add(b);box.add(child)
         box.show_all();self.refresh_rows_filter()
+
+    def show_media_menu(self,widget,idx,event=None):
+        if not 0<=idx<len(self.rows):return True
+        self.hover_preview.stop()
+        item=self.rows[idx];fresh=self.store.get(item['id']) if item.get('id') else None
+        if fresh:item={**item,**fresh}
+        local=bool(item.get('path') and Path(item['path']).is_file())
+        online=bool(item.get('url') and not item.get('unavailable'))
+        menu=Gtk.Menu();menu.get_style_context().add_class('media-context');self.media_context_menu=menu
+        def add(text,action):
+            option=Gtk.MenuItem(label=text);option.connect('activate',lambda *_:action());menu.append(option)
+        def play():
+            self.start_button=None;self.open_row(idx)
+            if self.start_button:self.start_button.clicked()
+        if local or online:add('播放',play)
+        add('查看详情',lambda:self.open_row(idx))
+        if online:
+            add('下载',lambda:self.prepare_download(item))
+            add('选择下载格式',lambda:self.inspect_and_download(item['url'],True))
+        if item.get('id'):add('管理所属列表',lambda:self.choose_collection(item))
+        if local:add('打开所在文件夹',lambda:self.open_local(Path(item['path']).parent))
+        if item.get('url'):
+            add('复制来源链接',lambda:Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(item['url'],-1))
+        menu.connect('deactivate',lambda menu:GLib.idle_add(menu.destroy))
+        menu.show_all()
+        if event:menu.popup_at_pointer(event)
+        else:menu.popup_at_widget(widget,Gdk.Gravity.SOUTH_WEST,Gdk.Gravity.NORTH_WEST,Gtk.get_current_event())
+        return True
 
     def show_art(self,widget,path):
         if path:
             try:
+                path=str(path)
                 if isinstance(widget,MediaCover):widget.set_cover(path)
                 else:widget.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(path,190,107,True))
             except GLib.Error:pass
         return False
+
+    def load_cached_art(self,widget,url):
+        import hashlib
+        from urllib.parse import urlparse
+        parsed=urlparse(url)
+        if parsed.scheme=='http' and (parsed.hostname or '').lower().endswith('.hdslb.com') and not parsed.username and not parsed.password:url=parsed._replace(scheme='https').geturl()
+        path=self.store.root/'thumbnails'/(hashlib.sha256(url.encode()).hexdigest()+'.img')
+        if path.is_file():self.show_art(widget,path)
 
     def load_art(self,widget,url):
         future=self.thumb_workers.submit(sources.thumbnail,self.store,url)
@@ -333,6 +606,8 @@ class App(Gtk.Window):
         future.add_done_callback(done)
 
     def load_source(self,kind,playlist_id=''):
+        if not self.store.setting('youtube_account_enabled',True):
+            self.show_settings();self.message('YouTube 已断开，请先连接账号');return
         self.source_kind=kind;self.select_nav('discover-follow' if kind=='subscriptions' else 'discover-collections')
         title={'likes':'喜欢的视频','playlists':'播放列表','subscriptions':'订阅频道','playlist-items':'播放列表内容'}[kind]
         if kind in ('likes','playlist-items'):
@@ -383,24 +658,43 @@ class App(Gtk.Window):
             r.add(row);box.add(r)
         scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.clear_content();self.content.pack_start(label('YouTube 播放列表' if kind=='playlists' else 'YouTube 订阅','title'),False,False,0);self.content.pack_start(scroll,True,True,0);self.content.show_all()
 
-    def show_discovery(self,category):
+    def show_discovery(self,category,snapshot=None):
         self.select_nav('discover-follow' if category=='follow' else 'discover-collections')
         title='关注' if category=='follow' else '收藏与播放列表';self.clear_content();generation=self.view_generation
-        heading=Gtk.Box(spacing=12);heading.pack_start(label(title,'title'),True,True,0)
-        choice=Gtk.ComboBoxText();choice.append('all','全部平台');choice.append('youtube','YouTube');choice.append('bilibili','B 站');choice.set_active_id('all');heading.pack_end(choice,False,False,0)
+        heading=Gtk.Box(spacing=12);heading.get_style_context().add_class('editorial-heading');heading.pack_start(label(title,'title'),True,True,0)
+        choice=Gtk.ComboBoxText();choice.append('all','全部平台');choice.append('youtube','YouTube');choice.append('bilibili','B 站');choice.set_active_id(snapshot['filter'] if snapshot else 'all');heading.pack_end(choice,False,False,0)
         self.content.pack_start(heading,False,False,0);status=label('正在读取…','muted');self.content.pack_start(status,False,False,0)
-        box=Gtk.ListBox();box.set_selection_mode(Gtk.SelectionMode.NONE);scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.content.pack_start(scroll,True,True,0);self.content.show_all()
+        box=Gtk.ListBox();box.set_selection_mode(Gtk.SelectionMode.NONE)
+        def activate_discovery(_,row):
+            if getattr(row,'creator_data',None):self.open_creator(*row.creator_data)
+            elif getattr(row,'discovery_action',None):self.collection_discovery_snapshot=self.snapshot_discovery('collections');row.discovery_action(row)
+        box.connect('row-activated',activate_discovery)
+        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.content.pack_start(scroll,True,True,0);self.content.show_all()
         self.discovery_choice=choice;self.discovery_box=box;self.discovery_status=status
-        entries=[];states={'youtube':'正在读取','bilibili':'正在读取'};received={'youtube':0,'bilibili':0}
+        entries=list(snapshot['entries']) if snapshot else [];states=dict(snapshot['states']) if snapshot else {'youtube':'正在读取','bilibili':'正在读取'};received={'youtube':0,'bilibili':0}
+        self.discovery_snapshot={'category':category,'entries':entries,'states':states,'choice':choice,'generation':generation}
         def render(*_):
             if generation!=self.view_generation:return False
             for child in box.get_children():box.remove(child)
             selected=choice.get_active_id();shown=[x for x in entries if selected in ('all',x['source'])]
             for item in shown:
                 line=Gtk.Box(spacing=10);line.set_border_width(10);line.pack_start(label(item['name']),True,True,0);line.pack_start(label('YouTube' if item['source']=='youtube' else 'B 站','muted'),False,False,0)
-                if item.get('action'):line.pack_end(button('查看',item['action']),False,False,0)
-                elif item.get('url'):line.pack_end(Gtk.LinkButton.new_with_label(item['url'],'查看主页'),False,False,0)
-                row=Gtk.ListBoxRow();row.add(line);box.add(row)
+                row=Gtk.ListBoxRow();row.add(line)
+                if category=='follow' and item.get('creator_id'):
+                    row.get_style_context().add_class('discovery-author');row.set_can_focus(True);row.set_activatable(True)
+                    row.set_tooltip_text('查看 '+item['name']+' 的视频');row.get_accessible().set_name(item['name']+'，查看视频')
+                    line.pack_end(Gtk.Image.new_from_icon_name('go-next-symbolic',Gtk.IconSize.MENU),False,False,0)
+                    row.creator_data=(item['source'],item['creator_id'],item['name'])
+                elif category=='collections' and item.get('action') and not item.get('placeholder'):
+                    row.get_style_context().add_class('discovery-author');row.set_can_focus(True);row.set_activatable(True)
+                    row.set_tooltip_text('打开 '+item['name']);row.get_accessible().set_name(item['name']+'，查看内容')
+                    line.pack_end(Gtk.Image.new_from_icon_name('go-next-symbolic',Gtk.IconSize.MENU),False,False,0)
+                    row.discovery_action=item['action']
+                else:
+                    row.set_activatable(False)
+                    if item.get('action'):line.pack_end(button('查看',item['action']),False,False,0)
+                    elif item.get('url'):line.pack_end(Gtk.LinkButton.new_with_label(item['url'],'查看主页'),False,False,0)
+                box.add(row)
             box.show_all();visible=('youtube','bilibili') if selected=='all' else (selected,)
             count=sum(not item.get('placeholder') for item in shown)
             status.set_text(f'{count} 项  ·  '+'  ·  '.join(('YouTube' if x=='youtube' else 'B 站')+'：'+states[x] for x in visible));return False
@@ -417,6 +711,7 @@ class App(Gtk.Window):
                 return False
             GLib.idle_add(update)
         def youtube():
+            if not self.store.setting('youtube_account_enabled',True):finish('youtube','未连接');return
             if category=='collections':accept('youtube',[{'source':'youtube','name':'喜欢的视频','static':True,'action':lambda *_:self.load_source('likes')}])
             try:
                 raw=sources.list_youtube('subscriptions' if category=='follow' else 'playlists');items=[]
@@ -425,7 +720,7 @@ class App(Gtk.Window):
                     if category=='collections':item['action']=lambda _,i=value:self.load_source('playlist-items',i['id'])
                     else:
                         cid=(sn.get('resourceId') or {}).get('channelId') or ''
-                        if cid and all(c.isalnum() or c in '_-' for c in cid):item['url']='https://www.youtube.com/channel/'+cid
+                        if cid and all(c.isalnum() or c in '_-' for c in cid):item['creator_id']=cid
                     items.append(item)
                 accept('youtube',items);finish('youtube')
             except Exception as exc:finish('youtube',('读取未完成：' if received['youtube'] else '读取失败：')+str(exc))
@@ -438,14 +733,15 @@ class App(Gtk.Window):
                     for value in raw:
                         if category=='follow':
                             mid=value.get('mid');item={'source':'bilibili','name':value.get('uname') or '未知 UP 主'}
-                            if isinstance(mid,int) and mid>0:item['url']=f'https://space.bilibili.com/{mid}'
+                            if isinstance(mid,int) and not isinstance(mid,bool) and mid>0:item['creator_id']=str(mid)
                         else:
                             name=value.get('title') or '未命名收藏夹';item={'source':'bilibili','name':name,'action':lambda _,i=value,n=name:self.load_bilibili('favorites',str(i['id']),n)}
                         items.append(item)
                     accept('bilibili',items)
                 bilibili.stream('followings' if category=='follow' else 'folders',page);finish('bilibili')
             except Exception as exc:finish('bilibili',('读取未完成：' if received['bilibili'] else '读取失败：')+str(exc))
-        threading.Thread(target=youtube,daemon=True).start();threading.Thread(target=bili,daemon=True).start()
+        if snapshot:render()
+        else:threading.Thread(target=youtube,daemon=True).start();threading.Thread(target=bili,daemon=True).start()
 
     def load_bilibili(self,kind,fid='',title=''):
         if not self.store.setting('bilibili_cookies',False):
@@ -514,23 +810,60 @@ class App(Gtk.Window):
             self.fail('B 站读取未完成：'+error);return False
         self.message('正在读取 B 站账号…');async_call(fetch,done,failed)
 
+    def snapshot_discovery(self,category):
+        previous=getattr(self,'discovery_snapshot',None)
+        if not previous or previous['category']!=category or previous['generation']!=self.view_generation:return None
+        states={key:('读取未完成' if value=='正在读取' else value) for key,value in previous['states'].items()}
+        return {'entries':list(previous['entries']),'states':states,'filter':previous['choice'].get_active_id()}
+
+    def open_creator(self,source,creator_id,name,query=''):
+        if source not in ('youtube','bilibili') or not str(creator_id).strip() or not str(name).strip():
+            self.message('作者资料不完整，无法查找');return
+        snapshot=self.snapshot_discovery('follow')
+        if snapshot is not None:self.creator_follow_snapshot=snapshot
+        self.source_kind='creator-local';self.creator_ref=(source,str(creator_id),str(name))
+        rows=[];name_matches=0
+        for item in self.store.media():
+            if item.get('source')!=source:continue
+            try:
+                metadata=item.get('metadata') or {}
+                if isinstance(metadata,str):metadata=json.loads(metadata)
+                if not isinstance(metadata,dict):metadata={}
+            except (ValueError,TypeError):metadata={}
+            known=metadata.get('creator_id')
+            if known is not None and str(known).strip():
+                if str(known)!=str(creator_id):continue
+            elif str(item.get('channel') or '').strip().casefold()==str(name).strip().casefold():name_matches+=1
+            else:continue
+            rows.append(item)
+        title=str(name)+' · 媒体库';self.display_rows(title,rows,loading=True,query=query)
+        self.rows_count.set_text(f'{len(rows)} 项')
+        back=button('← 返回关注',lambda *_:self.show_discovery('follow',getattr(self,'creator_follow_snapshot',None)));self.content.pack_start(back,False,False,0);self.content.reorder_child(back,0);back.show()
+        note=label('仅显示本机媒体库内容（含未下载的条目）。'+('其中 '+str(name_matches)+' 项按名称匹配，可能包含同名作者。' if name_matches else ''),'muted')
+        note.set_line_wrap(True);self.content.pack_start(note,False,False,0);self.content.reorder_child(note,2);note.show()
+        if not rows:
+            empty=label('媒体库中暂无匹配的内容。','muted');empty.set_halign(Gtk.Align.START);self.content.pack_start(empty,False,False,0);empty.show()
+
     def open_row(self,idx):
         if self.player:self.player.close();self.player=None
-        self.theater=False;self.row_index=idx;item=self.rows[idx];mid=item.get('id');fresh=self.store.get(mid) if mid else None
+        self.theater=False;self.row_index=idx;item=self.rows[idx];mid=item.get('id');self.detail_media_id=mid;fresh=self.store.get(mid) if mid else None
         if fresh:item={**item,**fresh}
+        if getattr(self,'rows_box',None) and self.rows_box.get_toplevel() is self:
+            self.navigation_matches=[child.row_index for child in self.rows_box.get_children() if child.get_child_visible()]
+        matches=getattr(self,'navigation_matches',list(range(len(self.rows))));position=matches.index(idx) if idx in matches else -1
         self.clear_content();nav=Gtk.Box(spacing=8);self.detail_nav=nav;nav.pack_start(button('← 返回列表',lambda *_:self.return_rows()),False,False,0)
-        matches=[i for i,row in enumerate(self.rows) if self.rows_query.casefold() in (str(row.get('title') or '')+' '+str(row.get('channel') or '')).casefold()];position=matches.index(idx) if idx in matches else -1
         prev=icon_button('go-previous-symbolic','上一条',lambda *_:self.open_row(matches[position-1]));prev.set_sensitive(position>0);nxt=icon_button('go-next-symbolic','下一条',lambda *_:self.open_row(matches[position+1]));nxt.set_sensitive(0<=position<len(matches)-1);nav.pack_end(nxt,False,False,0);nav.pack_end(prev,False,False,0);self.content.pack_start(nav,False,False,0)
         content=Gtk.Box(spacing=20);left=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);content.pack_start(left,True,True,0)
         self.player_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.player_box.set_size_request(360,270);self.player_box.get_style_context().add_class('card');self.placeholder=MediaCover();self.player_box.pack_start(self.placeholder,True,True,0);
-        if item.get('thumbnail'):self.load_art(self.placeholder,item['thumbnail'])
+        if item.get('thumbnail'):
+            if self.source_kind=='creator-local':self.load_cached_art(self.placeholder,item['thumbnail'])
+            else:self.load_art(self.placeholder,item['thumbnail'])
         left.pack_start(self.player_box,False,False,0)
         row=Gtk.Box(spacing=7)
         local=bool(item.get('path') and Path(item['path']).is_file())
         if local or (item.get('url') and not item.get('unavailable')):
-            self.start_button=Gtk.Button();self.start_button.set_image(Gtk.Image.new_from_icon_name('media-playback-start-symbolic',Gtk.IconSize.BUTTON));hint='播放本地文件' if local else '在线播放';self.start_button.set_tooltip_text(hint);self.start_button.get_accessible().set_name(hint);self.start_button.get_style_context().add_class('suggested-action');self.start_button.connect('clicked',lambda b:self.open_player(item['path']) if local else self.open_online(item,b));row.pack_start(self.start_button,False,False,0)
-            if not local:row.pack_start(label('在线播放，无需下载','muted'),False,False,0)
-            else:row.pack_start(label('来源已失效，播放本地文件' if item.get('unavailable') else '播放本地文件','muted'),False,False,0)
+            self.start_button=Gtk.Button();self.start_button.set_image(Gtk.Image.new_from_icon_name('media-playback-start-symbolic',Gtk.IconSize.BUTTON));hint='播放本地文件' if local else '在线播放';self.start_button.set_tooltip_text(hint);self.start_button.get_accessible().set_name(hint);self.start_button.get_style_context().add_class('suggested-action');self.start_button.connect('clicked',lambda b:self.open_preferred(item,b));row.pack_start(self.start_button,False,False,0)
+            if local and item.get('unavailable'):row.pack_start(label('来源已失效','muted'),False,False,0)
         else:row.pack_start(label('来源视频已失效，无法在线播放或下载' if item.get('unavailable') else '本地文件尚未下载或暂不可用','muted'),False,False,0)
         self.theater_button=icon_button('video-display-symbolic','影院模式',self.toggle_theater);self.fullscreen_button=icon_button('view-fullscreen-symbolic','全屏',self.toggle_fullscreen);row.pack_end(self.fullscreen_button,False,False,0);row.pack_end(self.theater_button,False,False,0);self.mode_row=row;self.control_row=Gtk.EventBox();self.control_row.add(row);self.player_box.pack_start(self.control_row,False,False,0)
         self.detail_left=left
@@ -545,7 +878,12 @@ class App(Gtk.Window):
         if item.get('path') and Path(item['path']).is_file():right.pack_start(button('打开所在目录',lambda *_:self.open_local(Path(item['path']).parent)),False,False,0)
         if mid:right.pack_start(button('管理所属列表',lambda *_:self.choose_collection(item)),False,False,0)
         content.pack_start(right,False,False,0)
-        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(content);self.content.pack_start(scroll,True,True,0);self.content.show_all()
+        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(content);self.content.pack_start(scroll,True,True,0)
+        def adapt_detail(_,allocation):
+            orientation=Gtk.Orientation.VERTICAL if allocation.width<680 else Gtk.Orientation.HORIZONTAL
+            if content.get_orientation()!=orientation:
+                GLib.idle_add(lambda:(content.set_orientation(orientation),False)[1])
+        scroll.connect('size-allocate',adapt_detail);self.content.show_all()
         if item.get('path') and Path(item['path']).is_file():
             generation=self.view_generation
             def show_info(info):
@@ -554,7 +892,8 @@ class App(Gtk.Window):
             async_call(lambda:local_media_info(item['path']),show_info,lambda _:False)
 
     def return_rows(self):
-        if getattr(self,'active_nav','').startswith('collection:'):self.show_library(int(self.active_nav.split(':',1)[1]),self.rows_query)
+        if self.source_kind=='creator-local':self.open_creator(*self.creator_ref,query=self.rows_query)
+        elif getattr(self,'active_nav','').startswith('collection:'):self.show_library(int(self.active_nav.split(':',1)[1]),self.rows_query)
         elif getattr(self,'active_nav','')=='library':self.show_library(query=self.rows_query)
         else:self.display_rows(self.rows_title,self.rows,query=self.rows_query)
 
@@ -562,13 +901,24 @@ class App(Gtk.Window):
         try:
             self.play_request+=1;self.playing_online=stream is not None
             if not self.player:
-                player=Player(self.store.setting('volume',100),lambda value:self.store.set_setting('volume',value),self.player_state);self.player_box.remove(self.placeholder)
+                focus_playback=self.get_focus() is self.start_button
+                player=Player(self.store.setting('volume',100),lambda value:self.store.set_setting('volume',value),self.player_state);player.toggle.get_style_context().add_class('suggested-action');self.player_box.remove(self.placeholder)
                 self.mode_row.remove(self.theater_button);self.mode_row.remove(self.fullscreen_button)
                 player.controls.pack_start(self.theater_button,False,False,0);player.controls.pack_start(self.fullscreen_button,False,False,0)
                 self.player_box.remove(self.control_row);self.player=player;self.player_box.pack_start(player,True,True,0);self.player_box.show_all()
+                if focus_playback:player.toggle.grab_focus()
             if stream:self.online_resolution=str(stream.get('resolution') or '')[:40];self.player.open_stream(stream['url'],stream['user_agent'],stream.get('audio_url',''),stream.get('referer',''));self.message('正在缓冲在线播放…')
             else:self.player.open(path);self.message('播放中')
         except Exception as e:self.fail(str(e))
+
+    def open_preferred(self,item,control):
+        try:fresh=self.store.get(item['id']) if item.get('id') else None
+        except Exception:self.fail('无法读取媒体库状态');return
+        if fresh:item={**item,**fresh}
+        path=item.get('path')
+        if path and Path(path).is_file():self.open_player(path)
+        elif item.get('url') and not item.get('unavailable'):self.open_online(item,control)
+        else:self.fail('本地文件不可用，来源也无法播放')
 
     def open_online(self,item,control):
         self.play_request+=1;request=self.play_request;generation=self.view_generation;control.set_sensitive(False);self.message('正在获取在线播放地址…')
@@ -613,6 +963,31 @@ class App(Gtk.Window):
 
     def on_key(self,_,event):
         if event.keyval==Gdk.KEY_Escape and self.fullscreened:self.toggle_fullscreen();return True
+        key=self.store.setting('playback_shortcut','space')
+        keyval={'space':Gdk.KEY_space,'k':Gdk.KEY_k}.get(key)
+        if not keyval or Gdk.keyval_to_lower(event.keyval)!=keyval:return False
+        if event.state & (Gdk.ModifierType.CONTROL_MASK|Gdk.ModifierType.MOD1_MASK|Gdk.ModifierType.SUPER_MASK|Gdk.ModifierType.SHIFT_MASK):return False
+        if not self.player or self.player.closed:return False
+        focused=self.get_focus()
+        if isinstance(focused,(Gtk.Editable,Gtk.TextView,Gtk.ComboBox,Gtk.Range)) or (isinstance(focused,Gtk.Button) and focused is not self.player.toggle):return False
+        if self.shortcut_release_source:GLib.source_remove(self.shortcut_release_source);self.shortcut_release_source=0
+        if not self.shortcut_pressed:self.shortcut_pressed=True;self.player.toggle.clicked()
+        return True
+
+    def on_key_release(self,_,event):
+        key=self.store.setting('playback_shortcut','space')
+        if self.shortcut_pressed and Gdk.keyval_to_lower(event.keyval)=={'space':Gdk.KEY_space,'k':Gdk.KEY_k}.get(key):
+            if self.shortcut_release_source:GLib.source_remove(self.shortcut_release_source)
+            self.shortcut_release_source=GLib.timeout_add(100,self.shortcut_released)
+            return True
+        return False
+
+    def shortcut_released(self):
+        self.shortcut_release_source=0;return self.reset_shortcut()
+
+    def reset_shortcut(self,*_):
+        if self.shortcut_release_source:GLib.source_remove(self.shortcut_release_source);self.shortcut_release_source=0
+        self.shortcut_pressed=False
         return False
 
     def prompt(self,title,placeholder='',value=''):
@@ -711,6 +1086,13 @@ class App(Gtk.Window):
             if percent is not None:self.download_progress.set_fraction(percent/100)
             self.download_status.show()
         else:self.download_status.hide()
+        event=next((j for j in jobs if j['id']==jid),None)
+        start=getattr(self,'start_button',None)
+        if event and event['state']=='完成' and event['media_id']==getattr(self,'detail_media_id',None) and start and start.get_toplevel() is self:
+            try:media=self.store.get(event['media_id'])
+            except Exception:self.fail('无法读取媒体库状态');return False
+            path=media.get('path') if media else None
+            if path and Path(path).is_file():start.set_tooltip_text('播放本地文件');start.get_accessible().set_name('播放本地文件')
         if getattr(self,'jobs_visible',False):self.show_jobs()
         return False
     def show_jobs(self):
@@ -737,7 +1119,7 @@ class App(Gtk.Window):
             actions.pack_start(icon_button('folder-open-symbolic','打开下载目录',lambda *_:self.open_local(self.store.media_dir)),False,False,0)
             actions.pack_start(icon_button('user-trash-symbolic','删除任务',lambda _,j=jid:self.delete_job(j)),False,False,0);row.pack_end(actions,False,False,0)
             box.pack_start(row,False,False,0)
-        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.clear_content();self.content.pack_start(label('下载任务','title'),False,False,0)
+        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(box);self.clear_content();self.content.pack_start(page_heading('下载任务'),False,False,0)
         if not rows:self.content.pack_start(label('还没有下载任务。可以从视频详情或添加链接开始下载。','muted'),False,False,0)
         self.content.pack_start(scroll,True,True,0);self.content.show_all();self.jobs_scroll=scroll;self.jobs_visible=True;GLib.idle_add(lambda:(scroll.get_vadjustment().set_value(offset),False)[1])
 
@@ -767,6 +1149,7 @@ class App(Gtk.Window):
         except (GLib.Error,OSError) as exc:self.fail('无法打开本地文件或目录：'+str(exc))
 
     def account_text(self,source,state=None,error=''):
+        if source=='youtube' and not self.store.setting('youtube_account_enabled',True):return '已断开'
         if source=='bilibili' and not self.store.setting('bilibili_cookies',False):return '未授权读取 Chrome 登录状态'
         previous=self.store.setting('account_'+source,{}) or {};when=previous.get('verified_at');name=previous.get('name')
         suffix=(' · '+name if name else '')+(' · 上次验证 '+when if when else '')
@@ -781,20 +1164,36 @@ class App(Gtk.Window):
         b=self.nav_buttons.get('platform-'+source)
         if not b or not b.get_child():return
         title='YouTube' if source=='youtube' else 'B 站';text=self.account_text(source,state,error)
-        b.get_child().get_children()[1].set_text(title+('  ●' if state=='connected' else '  ○'))
+        short={'checking':'验证中','connected':'已连接','unconnected':'未连接','expired':'需重连','unknown':'无法验证'}.get(state,'未验证')
+        if source=='youtube' and not self.store.setting('youtube_account_enabled',True):short='已断开'
+        if source=='bilibili' and not self.store.setting('bilibili_cookies',False):short='未授权'
+        b.get_child().get_children()[1].set_text(title+' · '+short)
         b.set_tooltip_text(text);b.get_accessible().set_name(title+' · '+text)
 
+    def account_view_status(self,source,state=None,error=''):
+        self.account_status_widgets[source].set_text(self.account_text(source,state,error))
+        if source=='bilibili':
+            enabled=self.store.setting('bilibili_cookies',False)
+            self.bilibili_connect_button.set_label('断开连接' if enabled else '连接 B 站')
+        if source=='youtube':
+            self.youtube_connect_button.set_label('尝试连接 Google 账号' if state=='expired' else '连接 Google 账号')
+            enabled=self.store.setting('youtube_account_enabled',True)
+            self.youtube_connect_button.set_visible(not enabled or state in ('unconnected','expired'))
+            self.youtube_disconnect_button.set_visible(enabled and state!='unconnected')
+
     def check_account(self,source,force=True):
+        if source=='youtube' and not self.store.setting('youtube_account_enabled',True):
+            self.account_checks[source]+=1;self.account_inflight.pop(source,None);self.account_cache.pop(source,None);self.account_view_status(source,'unconnected');self.platform_status(source,'unconnected');return
         if source=='bilibili' and not self.store.setting('bilibili_cookies',False):
-            self.account_checks[source]+=1;self.account_inflight.pop(source,None);self.account_cache.pop(source,None);self.account_status_widgets[source].set_text(self.account_text(source));self.platform_status(source);return
+            self.account_checks[source]+=1;self.account_inflight.pop(source,None);self.account_cache.pop(source,None);self.account_view_status(source,'unconnected');self.platform_status(source);return
         self.account_views[source]=self.view_generation
         cached=self.account_cache.get(source)
         if not force and cached and time.monotonic()-cached[0]<300:
-            _,state,error=cached;self.account_status_widgets[source].set_text(self.account_text(source,state,error));self.platform_status(source,state,error);return
+            _,state,error=cached;self.account_view_status(source,state,error);self.platform_status(source,state,error);return
         if not force and source in self.account_inflight:
-            self.account_status_widgets[source].set_text(self.account_text(source,'checking'));self.platform_status(source,'checking');return
+            self.account_view_status(source,'checking');self.platform_status(source,'checking');return
         self.account_checks[source]+=1;request=self.account_checks[source];self.account_inflight[source]=request
-        self.account_status_widgets[source].set_text(self.account_text(source,'checking'))
+        self.account_view_status(source,'checking')
         self.platform_status(source,'checking')
         def fetch():
             if source=='youtube':
@@ -805,7 +1204,7 @@ class App(Gtk.Window):
             self.account_inflight.pop(source,None);self.account_cache[source]=(time.monotonic(),'connected','')
             self.store.set_setting('account_'+source,{'name':name,'verified_at':datetime.now().strftime('%Y-%m-%d %H:%M')})
             self.platform_status(source,'connected')
-            if self.account_views.get(source)==self.view_generation:self.account_status_widgets[source].set_text(self.account_text(source,'connected'))
+            if self.account_views.get(source)==self.view_generation:self.account_view_status(source,'connected')
             return False
         def failed(error):
             if request!=self.account_checks[source]:return False
@@ -817,9 +1216,28 @@ class App(Gtk.Window):
             elif source=='youtube' and 'HTTP 401' in error:state='expired'
             error=error if state=='unknown' else '';self.account_cache[source]=(time.monotonic(),state,error)
             self.platform_status(source,state,error)
-            if self.account_views.get(source)==self.view_generation:self.account_status_widgets[source].set_text(self.account_text(source,state,error))
+            if self.account_views.get(source)==self.view_generation:self.account_view_status(source,state,error)
             return False
         async_call(fetch,done,failed)
+
+    def toggle_bilibili_account(self,*_):
+        enabled=self.store.setting('bilibili_cookies',False)
+        dialog=Gtk.MessageDialog(transient_for=self,modal=True,message_type=Gtk.MessageType.QUESTION,buttons=Gtk.ButtonsType.NONE,text='断开 B 站账号？' if enabled else '连接 B 站账号？')
+        dialog.format_secondary_text('停止读取关注和收藏；已开始的读取可能继续。Chrome 登录、本地媒体和下载文件会保留；播放和下载 Cookie 设置不变。' if enabled else '允许 MediaDesk 读取 Chrome 中的 B 站登录状态，用于获取关注和收藏。')
+        dialog.add_buttons('取消',Gtk.ResponseType.CANCEL,'断开' if enabled else '允许并连接',Gtk.ResponseType.OK);response=dialog.run();dialog.destroy()
+        if response!=Gtk.ResponseType.OK:return
+        self.store.set_setting('bilibili_cookies',not enabled)
+        if enabled:self.store.set_setting('account_bilibili',{})
+        self.check_account('bilibili');self.message('B 站已断开' if enabled else '正在验证 B 站账号…')
+
+    def disconnect_youtube(self,*_):
+        dialog=Gtk.MessageDialog(transient_for=self,modal=True,message_type=Gtk.MessageType.QUESTION,buttons=Gtk.ButtonsType.NONE,text='断开 YouTube 账号？')
+        dialog.format_secondary_text('MediaDesk 将停止读取账号；已开始的读取可能继续。本地媒体和共享的 Google 授权令牌会保留，不影响其他应用。')
+        dialog.add_buttons('取消',Gtk.ResponseType.CANCEL,'断开',Gtk.ResponseType.OK);response=dialog.run();dialog.destroy()
+        if response!=Gtk.ResponseType.OK:return
+        self.youtube_auth_generation+=1
+        self.store.set_setting('youtube_account_enabled',False);self.store.set_setting('account_youtube',{})
+        self.setup_authenticated=False;self.check_account('youtube');self.message('YouTube 已断开')
 
     def show_settings(self):
         content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);content.set_border_width(4)
@@ -835,16 +1253,32 @@ class App(Gtk.Window):
             card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);card.get_style_context().add_class('card');card.pack_start(label(title,'section'),False,False,0)
             state=label(self.account_text(source),'muted');self.account_status_widgets[source]=state;card.pack_start(state,False,False,0)
             actions=Gtk.Box(spacing=8)
-            if source=='youtube':actions.pack_start(button('连接 Google 账号',self.authorize),False,False,0)
+            if source=='youtube':
+                self.youtube_connect_button=button('连接 Google 账号',self.authorize)
+                self.youtube_connect_button.set_no_show_all(True)
+                actions.pack_start(self.youtube_connect_button,False,False,0)
+                self.youtube_disconnect_button=button('断开连接',self.disconnect_youtube)
+                self.youtube_disconnect_button.set_no_show_all(True);actions.pack_start(self.youtube_disconnect_button,False,False,0)
             else:
-                bili=Gtk.CheckButton(label='允许读取 Chrome 登录状态以获取关注和收藏');bili.set_active(self.store.setting('bilibili_cookies',False))
-                def change_bili(w):
-                    self.store.set_setting('bilibili_cookies',w.get_active());self.check_account('bilibili')
-                bili.connect('toggled',change_bili);card.pack_start(bili,False,False,0)
-                card.pack_start(label('关闭后已开始的读取可能继续；已保存的数据仍保留。','muted'),False,False,0)
+                self.bilibili_connect_button=button('连接 B 站',self.toggle_bilibili_account)
+                actions.pack_start(self.bilibili_connect_button,False,False,0)
             actions.pack_start(button('刷新状态',lambda _,s=source:self.check_account(s)),False,False,0);card.pack_start(actions,False,False,0);content.pack_start(card,False,False,0)
         content.pack_start(Gtk.Separator(),False,False,4);content.pack_start(label('下载与播放','section'),False,False,0)
         check=Gtk.CheckButton(label='允许解析、播放和下载时读取 Chrome 登录状态（Cookie）');check.set_active(self.store.setting('cookies',False));check.connect('toggled',lambda w:self.store.set_setting('cookies',w.get_active()));content.pack_start(check,False,False,0)
+        content.pack_start(label('播放 / 暂停快捷键','section'),False,False,0)
+        shortcut=Gtk.ComboBoxText()
+        for key,title in [('space','空格'),('k','K'),('off','关闭')]:shortcut.append(key,title)
+        shortcut.set_active_id(self.store.setting('playback_shortcut','space'))
+        if shortcut.get_active_id() is None:shortcut.set_active_id('space')
+        shortcut.set_halign(Gtk.Align.START);shortcut.connect('changed',lambda w:self.store.set_setting('playback_shortcut',w.get_active_id()));content.pack_start(shortcut,False,False,0)
+        content.pack_start(label('播放页面可用；输入或操作控件时保留原有键盘操作。','muted'),False,False,0)
+        content.pack_start(label('有下载任务时关闭窗口','section'),False,False,0)
+        close_choice=Gtk.ComboBoxText()
+        for key,title in [('ask','每次询问'),('minimize','最小化窗口'),('exit','退出并中断下载')]:close_choice.append(key,title)
+        close_choice.set_active_id(self.store.setting('close_behavior','ask'))
+        if close_choice.get_active_id() is None:close_choice.set_active_id('ask')
+        close_choice.connect('changed',lambda w:self.store.set_setting('close_behavior',w.get_active_id()));content.pack_start(close_choice,False,False,0)
+        content.pack_start(label('最小化后下载继续，暂停的任务仍需手动继续。','muted'),False,False,0)
         content.pack_start(Gtk.Separator(),False,False,4);content.pack_start(label('下载偏好','section'),False,False,0);group=None
         for key,title in [('quality','画质优先'),('size','文件大小优先'),('balance','均衡')]:
             rb=Gtk.RadioButton.new_with_label_from_widget(group,title)
@@ -855,9 +1289,32 @@ class App(Gtk.Window):
         for path in safe_dirs():
             cb=Gtk.CheckButton(label=str(path));cb.set_active(True);dirsbox.pack_start(cb,False,False,0);self.dir_checks.append((cb,path))
         actions=Gtk.Box(spacing=8);actions.pack_start(button('选择目录',lambda *_:self.choose_scan_dir(dirsbox)),False,False,0);actions.pack_start(button('扫描选中目录',self.scan),False,False,0);content.pack_start(actions,False,False,0)
-        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(content);self.clear_content();self.content.pack_start(label('设置','title'),False,False,0);self.content.pack_start(scroll,True,True,0);self.content.show_all()
+        scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(content);self.clear_content();self.content.pack_start(page_heading('设置'),False,False,0);self.content.pack_start(scroll,True,True,0);self.content.show_all()
         self.check_account('youtube',force=False);self.check_account('bilibili',force=False)
+    def on_close(self,*_):
+        try:
+            states={job['state'] for job in self.store.jobs()}
+            if not states.intersection(('等待','下载中','暂停')):return False
+            behavior=self.store.setting('close_behavior','ask')
+            if behavior=='minimize':self.iconify();return True
+            if behavior=='exit':return False
+            detail='退出将中断下载；已下载的部分会保留，下次可尝试继续。'
+            if '暂停' in states:detail+=' 最小化后已暂停的任务仍需手动继续。'
+        except Exception:
+            detail='无法读取下载状态。退出可能中断下载；已下载的部分会保留。'
+        dialog=Gtk.MessageDialog(transient_for=self,flags=Gtk.DialogFlags.MODAL,message_type=Gtk.MessageType.QUESTION,buttons=Gtk.ButtonsType.NONE,text='关闭 MediaDesk')
+        dialog.format_secondary_text(detail)
+        dialog.add_button('取消',Gtk.ResponseType.CANCEL)
+        dialog.add_button('最小化',Gtk.ResponseType.ACCEPT)
+        dialog.add_button('退出并中断',Gtk.ResponseType.YES)
+        response=dialog.run();dialog.destroy()
+        if response==Gtk.ResponseType.ACCEPT:self.iconify()
+        return response!=Gtk.ResponseType.YES
+
     def on_destroy(self,*_):
+        self.view_generation+=1
+        self.hover_preview.stop()
+        self.reset_shortcut()
         if self.player:self.player.close()
         self.thumb_workers.shutdown(wait=False,cancel_futures=True)
         self.downloader.stop_all()

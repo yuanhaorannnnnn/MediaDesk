@@ -4,6 +4,8 @@ import errno
 import hashlib
 import os
 import re
+import signal
+import time
 import shutil
 import subprocess
 import threading
@@ -21,11 +23,12 @@ def executable():
     return candidate
 
 
-def command(cookies=False):
+def command(cookies=False,cancel=None):
     args=[executable(),'--ignore-config','--no-playlist']
     if shutil.which('node'):
         try:
-            help_text=subprocess.run([args[0],'--ignore-config','--help'],capture_output=True,text=True,errors='replace',timeout=2)
+            help_args=[args[0],'--ignore-config','--help']
+            help_text=_run_cancellable(help_args,cancel,2) if cancel is not None else subprocess.run(help_args,capture_output=True,text=True,errors='replace',timeout=2)
             if help_text.returncode==0 and '--js-runtimes' in help_text.stdout:args+=['--js-runtimes','node']
         except (OSError,subprocess.TimeoutExpired):pass
     if cookies: args+=['--cookies-from-browser','chrome+gnomekeyring']
@@ -153,11 +156,41 @@ def inspect(url, cookies=False):
         fs.append({k:f.get(k) for k in ('format_id','ext','format_note','resolution','height','vcodec','acodec','filesize','filesize_approx')})
     return {'url':url,'title':raw.get('title') or sid,'channel':raw.get('channel') or raw.get('uploader') or '', 'description':raw.get('description') or '', 'thumbnail':raw.get('thumbnail') or '', 'duration':raw.get('duration'), 'published':raw.get('upload_date'), 'formats':fs}
 
-def online_stream(url,cookies=False):
+def _run_cancellable(args,cancel,timeout):
+    if cancel.is_set(): raise InterruptedError('已取消预览')
+    proc=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,errors='replace',env=environment(),start_new_session=True)
+    if hasattr(cancel,'bind'):cancel.bind(proc)
+    output=['','']
+    def read_pipe(index,pipe):
+        try:output[index]=pipe.read()
+        finally:pipe.close()
+    readers=[threading.Thread(target=read_pipe,args=(i,pipe),daemon=True) for i,pipe in enumerate((proc.stdout,proc.stderr))]
+    for thread in readers:thread.start()
+    deadline=time.monotonic()+timeout
+    try:
+        while True:
+            if cancel.is_set():raise InterruptedError('已取消预览')
+            if leader_state(proc):break
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise subprocess.TimeoutExpired(args,timeout)
+            cancel.wait(min(.05,remaining))
+        if cancel.is_set():raise InterruptedError('已取消预览')
+    finally:
+        if hasattr(cancel,'finish'):cancel.finish(proc)
+        else:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            finish_process(proc)
+        for thread in readers:thread.join(timeout=3)
+    if any(thread.is_alive() for thread in readers):raise RuntimeError('预览解析输出未能关闭')
+    return subprocess.CompletedProcess(args,proc.returncode,*output)
+
+
+def online_stream(url,cookies=False,cancel=None):
     identity=identify_url(url);sid=identity['id'];source=identity['url']
     fmt='best[protocol=https]/best[protocol=m3u8_native]' if identity['source']=='youtube' else 'best[protocol=https]/bestvideo[protocol=https]+bestaudio[protocol=https]'
-    args=command(cookies)+['-f',fmt,'--dump-single-json','--skip-download','--',source]
-    try:p=subprocess.run(args,capture_output=True,text=True,timeout=120,env=environment())
+    args=(command(cookies,cancel) if cancel is not None else command(cookies))+['-f',fmt,'--dump-single-json','--skip-download','--',source]
+    try:p=_run_cancellable(args,cancel,120) if cancel is not None else subprocess.run(args,capture_output=True,text=True,timeout=120,env=environment())
     except subprocess.TimeoutExpired:raise ValueError('获取播放地址超时，请检查网络后重试') from None
     if p.returncode:
         error=error_message(p.stderr)

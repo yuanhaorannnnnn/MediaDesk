@@ -8,8 +8,8 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
-from mediadesk.store import Store, youtube_id
-from mediadesk import downloader, sources
+from mediadesk.store import Store, youtube_id, identify_url
+from mediadesk import downloader, sources, bilibili
 
 class StoreTests(unittest.TestCase):
     def setUp(self):
@@ -41,6 +41,22 @@ class StoreTests(unittest.TestCase):
     def test_local_identity_and_invalid_url(self):
         f=Path(self.tmp.name)/'clip.mp4';f.write_bytes(b'x');a=self.store.save_local(f);self.assertEqual(a,self.store.save_local(f))
         with self.assertRaises(ValueError):youtube_id('https://evil.invalid/watch?v=jNQXAC9IVRw')
+    def test_bilibili_parts_have_distinct_identity_and_preserve_file(self):
+        base='https://www.bilibili.com/video/BV1bK411W797'
+        one=self.store.save_source({'url':base,'title':'P1','description':'原简介'})
+        self.store.set_path(one,'/tmp/existing.mp4')
+        self.assertEqual(one,self.store.save_source({'url':base+'?p=1','title':'P1 update'}))
+        two=self.store.save_source({'url':base+'?p=2','title':'P2'})
+        self.assertNotEqual(one,two);self.assertEqual(self.store.get(one)['path'],'/tmp/existing.mp4')
+        self.assertEqual(self.store.get(one)['description'],'原简介');self.assertEqual(self.store.get(two)['source'],'bilibili')
+        for url in (base+'?p=0',base+'?p=2&p=3','https://bilibili.com.evil.invalid/video/BV1bK411W797','http://www.bilibili.com/video/BV1bK411W797'):
+            with self.assertRaises(ValueError):identify_url(url)
+
+    def test_bilibili_delete_only_selected_part(self):
+        url='https://www.bilibili.com/video/BV1bK411W797?p=2';mid=self.store.save_source({'url':url});self.store.job('b',mid,'完成','')
+        target=self.store.media_dir/'视频 [BV1bK411W797_p2].mp4.part';other=self.store.media_dir/'视频 [BV1bK411W797_p1].mp4.part'
+        target.write_text('data');other.write_text('data');downloader.Downloads(self.store,lambda _:None).delete('b',True)
+        self.assertFalse(target.exists());self.assertTrue(other.exists())
     def test_format_validation_does_not_create_task(self):
         dl=downloader.Downloads(self.store,lambda _:None)
         with self.assertRaises(ValueError):dl.start({'url':'https://youtu.be/jNQXAC9IVRw'},fmt='bad/format')
@@ -48,7 +64,7 @@ class StoreTests(unittest.TestCase):
 
     def test_interrupted_job_preserves_partial_and_rejects_duplicate(self):
         script=Path(self.tmp.name)/'fake-downloader';partial=Path(self.tmp.name)/'download.part'
-        script.write_text('#!/bin/sh\nprintf partial > "$MEDIADESK_TEST_PARTIAL"\nprintf "[download] 1%%\\n"\nsleep 30\n');script.chmod(0o700)
+        script.write_text('#!/bin/sh\n[ "$2" = "--help" ] && exit 0\nprintf partial > "$MEDIADESK_TEST_PARTIAL"\nprintf "[download] 1%%\\n"\nsleep 30\n');script.chmod(0o700)
         with mock.patch.dict('os.environ',{'MEDIADESK_YTDLP':str(script),'MEDIADESK_TEST_PARTIAL':str(partial)}):
             events=[];worker=downloader.Downloads(self.store,events.append);item={'url':'https://youtu.be/jNQXAC9IVRw'};jid=worker.start(item)
             deadline=time.monotonic()+5
@@ -65,7 +81,7 @@ class StoreTests(unittest.TestCase):
 
     def test_pause_resume_delete_keeps_partial_file(self):
         script=Path(self.tmp.name)/'fake-download';partial=Path(self.tmp.name)/'progress.part'
-        script.write_text('#!/bin/sh\nwhile :; do printf x >> "$MEDIADESK_TEST_PARTIAL"; printf "[download] 23%%\\n"; sleep 0.1; done\n');script.chmod(0o700)
+        script.write_text('#!/bin/sh\n[ "$2" = "--help" ] && exit 0\nwhile :; do printf x >> "$MEDIADESK_TEST_PARTIAL"; printf "[download] 23%%\\n"; sleep 0.1; done\n');script.chmod(0o700)
         with mock.patch.dict('os.environ',{'MEDIADESK_YTDLP':str(script),'MEDIADESK_TEST_PARTIAL':str(partial)}):
             worker=downloader.Downloads(self.store,lambda _:None);jid=worker.start({'url':'https://youtu.be/jNQXAC9IVRw'},preference='size',fmt='137+140')
             deadline=time.monotonic()+5
@@ -126,7 +142,7 @@ class StoreTests(unittest.TestCase):
 
     def test_delete_files_waits_for_running_process(self):
         script=Path(self.tmp.name)/'fake';partial=self.store.media_dir/'示例 [jNQXAC9IVRw].webm.part'
-        script.write_text('#!/bin/sh\nwhile :; do printf x >> "$MEDIADESK_TEST_PARTIAL"; sleep 0.1; done\n');script.chmod(0o700)
+        script.write_text('#!/bin/sh\n[ "$2" = "--help" ] && exit 0\nwhile :; do printf x >> "$MEDIADESK_TEST_PARTIAL"; sleep 0.1; done\n');script.chmod(0o700)
         with mock.patch.dict('os.environ',{'MEDIADESK_YTDLP':str(script),'MEDIADESK_TEST_PARTIAL':str(partial)}):
             worker=downloader.Downloads(self.store,lambda _:None);jid=worker.start({'url':'https://youtu.be/jNQXAC9IVRw'})
             deadline=time.monotonic()+5
@@ -135,6 +151,36 @@ class StoreTests(unittest.TestCase):
             self.assertFalse(partial.exists());self.assertFalse(worker.processes);self.assertEqual(self.store.jobs(),[])
 
 class AdapterTests(unittest.TestCase):
+    def test_node_runtime_flag_follows_downloader_capability(self):
+        with mock.patch.object(downloader,'executable',return_value='/fake/yt-dlp'),mock.patch.object(downloader.shutil,'which',return_value='/fake/node'),mock.patch.object(downloader.subprocess,'run') as run:
+            run.return_value=mock.Mock(returncode=0,stdout='  --js-runtimes RUNTIMES')
+            self.assertIn('--js-runtimes',downloader.command())
+            run.assert_called_with(['/fake/yt-dlp','--ignore-config','--help'],capture_output=True,text=True,errors='replace',timeout=2)
+            run.return_value=mock.Mock(returncode=0,stdout='old version help')
+            self.assertNotIn('--js-runtimes',downloader.command())
+            run.side_effect=downloader.subprocess.TimeoutExpired('yt-dlp',10)
+            self.assertNotIn('--js-runtimes',downloader.command())
+
+    def test_bilibili_pagination_and_invalid_content(self):
+        client=bilibili.Client.__new__(bilibili.Client);client.mid=1;pages=[]
+        client.get=mock.Mock(side_effect=[{'list':[{'mid':1},{'mid':2}],'total':3},{'list':[{'mid':3}],'total':3}])
+        client.followings(pages.extend);self.assertEqual([p['mid'] for p in pages],[1,2,3]);self.assertEqual(client.get.call_args.kwargs['pn'],2)
+        pages=[];client.get=mock.Mock(side_effect=[{'medias':[{'id':1,'type':2,'title':'有效','bv_id':'BV1bK411W797'}],'has_more':True},{'medias':[{'id':2,'type':2,'title':'已失效视频','bv_id':'BV1PL4y1h7yd','attr':1}],'has_more':False}])
+        client.favorites('9',pages.extend);self.assertEqual(len(pages),2)
+        self.assertFalse(bilibili.normalize(pages[0])['unavailable']);self.assertTrue(bilibili.normalize(pages[1])['unavailable'])
+        client.get=mock.Mock(return_value={'medias':[],'has_more':True})
+        with self.assertRaisesRegex(ValueError,'分页中断'):client.favorites('9',lambda _:None)
+        client.get=mock.Mock(return_value={'list':[],'total':3})
+        with self.assertRaisesRegex(ValueError,'未读完'):client.followings(lambda _:None)
+    def test_bilibili_split_stream_and_untrusted_audio(self):
+        response={'requested_formats':[{'url':'https://a.bilivideo.com/video','vcodec':'h264','acodec':'none'},{'url':'https://b.bilivideo.com/audio','vcodec':'none','acodec':'aac'}]}
+        def run(data):return mock.patch('mediadesk.downloader.subprocess.run',return_value=mock.Mock(returncode=0,stdout=json.dumps(data),stderr=''))
+        with mock.patch('mediadesk.downloader.executable',return_value='/fake'),run(response):
+            stream=downloader.online_stream('https://www.bilibili.com/video/BV1bK411W797?p=2')
+            self.assertTrue(stream['audio_url']);self.assertEqual(stream['referer'],'https://www.bilibili.com/video/BV1bK411W797?p=2')
+        response['requested_formats'][1]['url']='https://bilivideo.com.evil.invalid/audio'
+        with mock.patch('mediadesk.downloader.executable',return_value='/fake'),run(response):
+            with self.assertRaises(ValueError):downloader.online_stream('https://www.bilibili.com/video/BV1bK411W797?p=2')
     def test_online_stream_validates_origin_and_combined_media(self):
         response={'url':'https://r1.googlevideo.com/videoplayback?token=example','vcodec':'h264','acodec':'aac','resolution':'640x360','http_headers':{'User-Agent':'test agent'}}
         def result(data):return mock.Mock(returncode=0,stdout=json.dumps(data),stderr='')

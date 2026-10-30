@@ -16,6 +16,7 @@ _release=api('libvlc_release',None,[PTR])
 _new_media=api('libvlc_media_new_path',PTR,[PTR,C.c_char_p])
 _new_location=api('libvlc_media_new_location',PTR,[PTR,C.c_char_p])
 _media_option=api('libvlc_media_add_option',None,[PTR,C.c_char_p])
+_media_slave=api('libvlc_media_slaves_add',C.c_int,[PTR,C.c_int,C.c_uint,C.c_char_p])
 _release_media=api('libvlc_media_release',None,[PTR])
 _new_player=api('libvlc_media_player_new',PTR,[PTR])
 _release_player=api('libvlc_media_player_release',None,[PTR])
@@ -58,10 +59,13 @@ class Player(Gtk.Box):
         if _play(self.player)!=0: raise RuntimeError('无法开始播放')
         self.volume_pending=True
 
-    def open_stream(self,url,user_agent=''):
+    def open_stream(self,url,user_agent='',audio_url='',referer=''):
         m=_new_location(self.instance,url.encode())
         if not m:raise RuntimeError('无法打开在线播放地址')
         if user_agent:_media_option(m,(':http-user-agent='+user_agent).encode())
+        if referer:_media_option(m,(':http-referrer='+referer).encode())
+        if audio_url and _media_slave(m,1,4,audio_url.encode())!=0:
+            _release_media(m);raise RuntimeError('无法加载在线播放音频')
         _set_media(self.player,m);_release_media(m)
         if _play(self.player)!=0:raise RuntimeError('无法开始在线播放')
         self.last_state=None;self.volume_pending=True

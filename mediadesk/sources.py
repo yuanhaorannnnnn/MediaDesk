@@ -66,13 +66,16 @@ def normalize(item, kind):
 
 
 def thumbnail(store, url):
-    """Cache source artwork privately; never follow links outside YouTube image hosts."""
+    """Cache source artwork privately; restrict hosts and redirects."""
     import hashlib
     from urllib.parse import urlparse
     from urllib.request import Request, build_opener, HTTPRedirectHandler
     allowed={'i.ytimg.com','img.youtube.com','yt3.ggpht.com','yt3.googleusercontent.com'}
     def valid(value):
-        p=urlparse(value);return p.scheme=='https' and not p.username and not p.password and p.hostname in allowed
+        p=urlparse(value);host=(p.hostname or '').lower();return p.scheme=='https' and not p.username and not p.password and (host in allowed or host.endswith('.hdslb.com'))
+    parsed=urlparse(url)
+    if parsed.scheme=='http' and (parsed.hostname or '').lower().endswith('.hdslb.com') and not parsed.username and not parsed.password:
+        url=parsed._replace(scheme='https').geturl()
     if not valid(url):return None
     folder=store.root/'thumbnails';folder.mkdir(mode=0o700,exist_ok=True)
     path=folder/(hashlib.sha256(url.encode()).hexdigest()+'.img')

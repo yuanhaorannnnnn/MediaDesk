@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/readme-hero.webp" alt="不同音视频收藏汇聚在同一个媒体架上" width="100%">
+  <img src="docs/images/readme-hero.jpg" alt="不同音视频收藏汇聚在同一个媒体架上" width="100%">
 </p>
 
 <p align="center"><img src="mediadesk/assets/mediadesk.svg" alt="MediaDesk 图标" width="72"></p>

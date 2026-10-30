@@ -38,7 +38,7 @@ class Player(Gtk.Box):
         self.pack_start(self.area,True,True,0)
         controls=Gtk.Box(spacing=6);self.controls=controls;self.toggle=Gtk.Button();self.toggle.connect('clicked',lambda *_:_pause(self.player) if _state(self.player)==3 else _play(self.player));controls.pack_start(self.toggle,False,False,0)
         self._set_play_icon(False)
-        self.scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,1000,1);self.scale.set_draw_value(False);self.scale.set_hexpand(True);self.scrubbing=False;self.scale.connect('button-press-event',self._on_press);self.scale.connect('button-release-event',self._on_seek);self.scale.connect('change-value',self._on_change);controls.pack_start(self.scale,True,True,0)
+        self.scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,1000,1);self.scale.get_style_context().add_class('player-seek');self.scale.set_draw_value(False);self.scale.set_hexpand(True);self.scrubbing=False;self.scale.connect('button-press-event',self._on_press);self.scale.connect('button-release-event',self._on_seek);self.scale.connect('change-value',self._on_change);controls.pack_start(self.scale,True,True,0)
         self.label=Gtk.Label(label='00:00 / 00:00');controls.pack_start(self.label,False,False,0)
         self.on_volume=on_volume;self.on_state=on_state;self.last_state=None;self.volume_button=Gtk.VolumeButton();self.volume_button.set_tooltip_text('音量（设为零可静音）');self.volume_button.get_accessible().set_name('音量');self.volume_button.set_value(max(0,min(100,int(volume)))/100);self.volume_button.connect('value-changed',self._change_volume);controls.pack_start(self.volume_button,False,False,0)
         self.volume_pending=True

@@ -8,9 +8,9 @@ from unittest import mock
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GdkPixbuf
 
-from mediadesk.app import App
+from mediadesk.app import App, MediaCover
 from mediadesk.store import Store
 
 
@@ -60,6 +60,22 @@ class DesktopTests(unittest.TestCase):
         finally:
             release.set()
 
+    def test_cover_adapts_and_preserves_image_ratio(self):
+        path = self.temp.name + '/cover.png'
+        pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 400, 400)
+        pixbuf.fill(0x557788ff)
+        pixbuf.savev(path, 'png', [], [])
+        cover = MediaCover(); cover.set_cover(path)
+        allocation = Gdk.Rectangle()
+        allocation.width, allocation.height = 320, 180
+        cover.resize_cover(cover.frame, allocation)
+        self.assertEqual(cover.frame.get_size_request().height, 180)
+        self.assertEqual(cover.image_size, (180, 180))
+        allocation.width = 200
+        cover.resize_cover(cover.frame, allocation)
+        self.assertEqual(cover.frame.get_size_request().height, 112)
+        self.assertEqual(cover.image_size, (112, 112))
+
     def test_search_navigation_and_return_preserve_filter(self):
         for url, title in [('https://youtu.be/jNQXAC9IVRw', '搜索 样例一'), ('https://youtu.be/dQw4w9WgXcQ', '其他内容'), ('https://youtu.be/9bZkp7q19f0', '搜索 样例二')]:
             self.store.save_youtube({'url': url, 'title': title})
@@ -77,6 +93,35 @@ class DesktopTests(unittest.TestCase):
         restored = next(w for w in self.window.content.get_children() if isinstance(w, Gtk.SearchEntry))
         self.assertEqual(restored.get_text(), '搜索')
         self.assertTrue(spin_until(lambda: sum(child.get_child_visible() for child in self.window.rows_box.get_children()) == 2))
+
+    def test_download_progress_represents_current_file(self):
+        jobs = [
+            {'id': 'one', 'media_id': 'a', 'title': '下载样例', 'state': '下载中', 'detail': '42.5%'},
+            {'id': 'two', 'media_id': 'b', 'title': '失败样例', 'state': '失败', 'detail': '连接中断'},
+            {'id': 'three', 'media_id': 'c', 'title': '完成样例', 'state': '完成', 'detail': ''},
+        ]
+        with mock.patch.object(self.window.downloader, 'reconcile', return_value=True), mock.patch.object(self.store, 'jobs', return_value=jobs), mock.patch.object(self.store, 'get', return_value=None):
+            self.window.show_jobs()
+        viewport = self.window.jobs_scroll.get_child()
+        entries = viewport.get_child().get_children()
+        details = [row.get_children()[0] for row in entries]
+        bars = [w for w in details[0].get_children() if isinstance(w, Gtk.ProgressBar)]
+        self.assertEqual(len(bars), 1)
+        self.assertAlmostEqual(bars[0].get_fraction(), .425)
+        self.assertEqual(bars[0].get_accessible().get_name(), '当前文件 42.5%')
+        self.assertFalse(any(isinstance(w, Gtk.ProgressBar) for w in details[1].get_children()))
+        self.assertFalse(any(isinstance(w, Gtk.ProgressBar) for w in details[2].get_children()))
+        self.assertTrue(any(isinstance(w, Gtk.Label) and '连接中断' in w.get_text() for w in details[1].get_children()))
+        while Gtk.events_pending(): Gtk.main_iteration()
+
+    def test_local_detail_explains_play_action(self):
+        path = self.store.media_dir / 'example.mp4'
+        path.write_bytes(b'')
+        self.store.save_local(path)
+        self.window.show_library()
+        self.window.open_row(0)
+        self.assertEqual(self.window.start_button.get_tooltip_text(), '播放本地文件')
+        self.assertTrue(any(isinstance(w, Gtk.Label) and w.get_text() == '播放本地文件' for w in self.window.mode_row.get_children()))
 
     def test_online_playback_does_not_create_download(self):
         self.store.save_youtube({'url': 'https://youtu.be/jNQXAC9IVRw', 'title': 'sample'})

@@ -14,9 +14,9 @@ from .store import Store, youtube_id, identify_url
 from . import downloader, sources, bilibili
 from .player import Player
 
-CSS=b'''*{font-family:Sans} window,dialog,headerbar{background:#11151a;color:#f2f5f4} list,list row,scrolledwindow,viewport{background:#11151a;color:#f2f5f4} label{color:#f2f5f4} button{background:#263137;color:#f2f5f4;border:1px solid #46575c;border-radius:6px;padding:7px} button:hover{background:#35434a} button:focus{outline:2px solid #7dd6d0;outline-offset:-2px} button.suggested-action{background:#7dd6d0;color:#102426;border:0} button.suggested-action label{color:#102426} entry,combobox,treeview{background:#1d242b;color:#f2f5f4} .sidebar{background:#171c22;border-right:1px solid #303b42} .sidebar button{background:transparent;border-color:transparent;padding:9px} .sidebar button:hover{background:#28323b} .sidebar button.selected{background:#2b3d41;border-left:3px solid #7dd6d0} .sidebar .nav-title{font-size:12px;color:#9eafb2;font-weight:bold} .muted{color:#b7c5c8} .title{font-size:25px;font-weight:bold} .section{font-size:18px;font-weight:bold} .card{background:#1d242b;padding:20px;border-radius:8px} button.media-card{background:#1d242b;border-color:#303b42;padding:0} button.media-card:hover{background:#28323b;border-color:#7dd6d0} .status{color:#b7c5c8;font-size:12px} label.media-title{font-size:15px;font-weight:600} image.media-art{background:#263137;color:#9eafb2;border-radius:4px}'''
+CSS=b'''*{font-family:Sans} window,dialog,headerbar{background:#11151a;color:#f2f5f4} list,list row,scrolledwindow,viewport{background:#11151a;color:#f2f5f4} label{color:#f2f5f4} button{background:#263137;color:#f2f5f4;border:1px solid #46575c;border-radius:6px;padding:7px} button:hover{background:#35434a} button:focus{outline:2px solid #7dd6d0;outline-offset:-2px} button.suggested-action{background:#7dd6d0;color:#102426;border:0} button.suggested-action label{color:#102426} entry,combobox,treeview{background:#1d242b;color:#f2f5f4} .sidebar{background:#171c22;border-right:1px solid #303b42} .sidebar button{background:transparent;border-color:transparent;padding:9px} .sidebar button:hover{background:#28323b} .sidebar button.selected{background:#2b3d41;border-left:3px solid #7dd6d0} .sidebar .nav-title{font-size:12px;color:#9eafb2;font-weight:bold} .muted{color:#b7c5c8} .title{font-size:25px;font-weight:bold} .section{font-size:18px;font-weight:bold} .card{background:#1d242b;padding:20px;border-radius:8px} button.media-card{background:#1d242b;border-color:#303b42;padding:0} button.media-card:hover{background:#28323b;border-color:#7dd6d0} .status{color:#b7c5c8;font-size:12px} label.media-title{font-size:15px;font-weight:600} .media-art{background:#263137;color:#9eafb2;border-radius:4px} scale.player-seek trough highlight{background-image:none;background-color:#7dd6d0;border-color:#7dd6d0;box-shadow:none} progressbar.job-progress progress{background-image:none;background-color:#7dd6d0;border-color:#7dd6d0;box-shadow:none} label.job-failed{color:#ffa6a0}'''
 
-LIGHT_CSS=b'''*{font-family:Sans} window,dialog,headerbar{background:#f6f8f7;color:#192c30} list,list row,scrolledwindow,viewport{background:#f6f8f7;color:#192c30} label{color:#192c30} button{background:#edf2f1;color:#192c30;border:1px solid #c4d2d0;border-radius:6px;padding:7px} button:hover{background:#dce9e7} button:focus{outline:2px solid #187d78;outline-offset:-2px} button.suggested-action{background:#247f78;color:#ffffff;border:0} button.suggested-action label{color:#ffffff} entry,combobox,treeview{background:#ffffff;color:#192c30} .sidebar{background:#eaf0ef;border-right:1px solid #cedbd9} .sidebar button{background:transparent;border-color:transparent;padding:9px} .sidebar button:hover{background:#d8e6e4} .sidebar button.selected{background:#cce4e1;border-left:3px solid #247f78} .sidebar .nav-title{font-size:12px;color:#536e6b;font-weight:bold} .muted{color:#536b6b} .title{font-size:25px;font-weight:bold} .section{font-size:18px;font-weight:bold} .card{background:#ffffff;padding:20px;border-radius:8px} button.media-card{background:#ffffff;border-color:#d3dfdd;padding:0} button.media-card:hover{background:#edf7f5;border-color:#247f78} .status{color:#536b6b;font-size:12px} label.media-title{font-size:15px;font-weight:600} image.media-art{background:#e6eeec;color:#536e6b;border-radius:4px}'''
+LIGHT_CSS=b'''*{font-family:Sans} window,dialog,headerbar{background:#f6f8f7;color:#192c30} list,list row,scrolledwindow,viewport{background:#f6f8f7;color:#192c30} label{color:#192c30} button{background:#edf2f1;color:#192c30;border:1px solid #c4d2d0;border-radius:6px;padding:7px} button:hover{background:#dce9e7} button:focus{outline:2px solid #187d78;outline-offset:-2px} button.suggested-action{background:#247f78;color:#ffffff;border:0} button.suggested-action label{color:#ffffff} entry,combobox,treeview{background:#ffffff;color:#192c30} .sidebar{background:#eaf0ef;border-right:1px solid #cedbd9} .sidebar button{background:transparent;border-color:transparent;padding:9px} .sidebar button:hover{background:#d8e6e4} .sidebar button.selected{background:#cce4e1;border-left:3px solid #247f78} .sidebar .nav-title{font-size:12px;color:#536e6b;font-weight:bold} .muted{color:#536b6b} .title{font-size:25px;font-weight:bold} .section{font-size:18px;font-weight:bold} .card{background:#ffffff;padding:20px;border-radius:8px} button.media-card{background:#ffffff;border-color:#d3dfdd;padding:0} button.media-card:hover{background:#edf7f5;border-color:#247f78} .status{color:#536b6b;font-size:12px} label.media-title{font-size:15px;font-weight:600} .media-art{background:#e6eeec;color:#536e6b;border-radius:4px} scale.player-seek trough highlight{background-image:none;background-color:#247f78;border-color:#247f78;box-shadow:none} progressbar.job-progress progress{background-image:none;background-color:#247f78;border-color:#247f78;box-shadow:none} label.job-failed{color:#9c3733}'''
 
 
 def recolor(css,colors):
@@ -30,7 +30,7 @@ NABIS_CSS=recolor(CSS,{
     '#35434a':'#5b4958','#7dd6d0':'#eac094','#102426':'#342117','#1d242b':'#382c3e',
     '#171c22':'#302638','#303b42':'#665267','#28323b':'#52435a','#2b3d41':'#5b465d',
     '#9eafb2':'#dfc5bd','#b7c5c8':'#d9c8c9'
-})+b''' .sidebar .nav-title{background:#51405c;color:#f2ddc9;padding:4px 7px} .sidebar button.selected{border-left-width:4px} .card,button.media-card{border-radius:2px} button.media-card{border:2px solid #665267;border-bottom:4px solid #a77972} image.media-art{border-radius:0}'''
+})+b''' .sidebar .nav-title{background:#51405c;color:#f2ddc9;padding:4px 7px} .sidebar button.selected{border-left-width:4px} .card,button.media-card{border-radius:2px} button.media-card{border:2px solid #665267;border-bottom:4px solid #a77972} .media-art{border-radius:0}'''
 NEO_IMPRESSION_CSS=recolor(LIGHT_CSS,{
     '#f6f8f7':'#f3f5ec','#192c30':'#243a44','#edf2f1':'#e5eee8','#c4d2d0':'#b6c9c5',
     '#dce9e7':'#d5e5da','#187d78':'#315d77','#247f78':'#315d77','#ffffff':'#fffef7',
@@ -106,6 +106,34 @@ def local_media_info(path):
     if math.isfinite(duration) and duration>0:
         seconds=int(duration);parts.append(f'{seconds//3600}:{seconds%3600//60:02d}:{seconds%60:02d}' if seconds>=3600 else f'{seconds//60:02d}:{seconds%60:02d}')
     return ' · '.join(x for x in parts if x)
+
+
+class MediaCover(Gtk.Overlay):
+    """Fit images to a 16:9 frame without cropping their original proportions."""
+    def __init__(self):
+        super().__init__()
+        self.pixbuf=None;self.cover_height=107;self.image_size=None
+        self.frame=Gtk.Box();self.frame.set_size_request(190,self.cover_height)
+        self.frame.get_style_context().add_class('media-art')
+        self.frame.connect('size-allocate',self.resize_cover);self.add(self.frame)
+        self.image=Gtk.Image.new_from_icon_name('video-x-generic-symbolic',Gtk.IconSize.DIALOG)
+        self.image.get_style_context().add_class('muted');self.image.set_halign(Gtk.Align.CENTER);self.image.set_valign(Gtk.Align.CENTER)
+        self.add_overlay(self.image)
+
+    def resize_cover(self,widget,allocation):
+        height=max(107,round(allocation.width*9/16))
+        if height!=self.cover_height:
+            self.cover_height=height;widget.set_size_request(190,height)
+        if self.pixbuf:
+            scale=min(allocation.width/self.pixbuf.get_width(),height/self.pixbuf.get_height())
+            size=(max(1,round(self.pixbuf.get_width()*scale)),max(1,round(self.pixbuf.get_height()*scale)))
+            if size!=self.image_size:
+                self.image_size=size;self.image.set_from_pixbuf(self.pixbuf.scale_simple(*size,GdkPixbuf.InterpType.BILINEAR))
+
+    def set_cover(self,path):
+        self.pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(path,480,270,True);self.image_size=None
+        self.resize_cover(self.frame,self.frame.get_allocation())
+
 
 
 class App(Gtk.Window):
@@ -276,7 +304,7 @@ class App(Gtk.Window):
         box=self.rows_box
         for i,item in enumerate(rows,start):
             card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);card.set_border_width(9);card.set_size_request(190,-1)
-            artwork=Gtk.Image.new_from_icon_name('video-x-generic-symbolic',Gtk.IconSize.DIALOG);artwork.get_style_context().add_class('media-art');artwork.set_size_request(190,107);card.pack_start(artwork,False,False,0)
+            artwork=MediaCover();card.pack_start(artwork,False,False,0)
             if item.get('thumbnail'):self.load_art(artwork,item['thumbnail'])
             t=label(item.get('title') or '未命名','media-title');t.set_max_width_chars(24);t.set_lines(2);t.set_ellipsize(3);t.set_tooltip_text(item.get('title') or '未命名');card.pack_start(t,False,False,0)
             origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站'}.get(item.get('source'),'其他来源');channel=item.get('channel');state=('本地可用' if Path(item['path']).is_file() else '文件缺失') if item.get('path') else '未下载'
@@ -290,7 +318,9 @@ class App(Gtk.Window):
 
     def show_art(self,widget,path):
         if path:
-            try:widget.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(path,190,107,True))
+            try:
+                if isinstance(widget,MediaCover):widget.set_cover(path)
+                else:widget.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(path,190,107,True))
             except GLib.Error:pass
         return False
 
@@ -490,7 +520,7 @@ class App(Gtk.Window):
         matches=[i for i,row in enumerate(self.rows) if self.rows_query.casefold() in (str(row.get('title') or '')+' '+str(row.get('channel') or '')).casefold()];position=matches.index(idx) if idx in matches else -1
         prev=icon_button('go-previous-symbolic','上一条',lambda *_:self.open_row(matches[position-1]));prev.set_sensitive(position>0);nxt=icon_button('go-next-symbolic','下一条',lambda *_:self.open_row(matches[position+1]));nxt.set_sensitive(0<=position<len(matches)-1);nav.pack_end(nxt,False,False,0);nav.pack_end(prev,False,False,0);self.content.pack_start(nav,False,False,0)
         content=Gtk.Box(spacing=20);left=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);content.pack_start(left,True,True,0)
-        self.player_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.player_box.set_size_request(360,270);self.player_box.get_style_context().add_class('card');self.placeholder=Gtk.Image.new_from_icon_name('video-x-generic',Gtk.IconSize.DIALOG);self.player_box.pack_start(self.placeholder,True,True,0);
+        self.player_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.player_box.set_size_request(360,270);self.player_box.get_style_context().add_class('card');self.placeholder=MediaCover();self.player_box.pack_start(self.placeholder,True,True,0);
         if item.get('thumbnail'):self.load_art(self.placeholder,item['thumbnail'])
         left.pack_start(self.player_box,False,False,0)
         row=Gtk.Box(spacing=7)
@@ -498,12 +528,13 @@ class App(Gtk.Window):
         if local or (item.get('url') and not item.get('unavailable')):
             self.start_button=Gtk.Button();self.start_button.set_image(Gtk.Image.new_from_icon_name('media-playback-start-symbolic',Gtk.IconSize.BUTTON));hint='播放本地文件' if local else '在线播放';self.start_button.set_tooltip_text(hint);self.start_button.get_accessible().set_name(hint);self.start_button.get_style_context().add_class('suggested-action');self.start_button.connect('clicked',lambda b:self.open_player(item['path']) if local else self.open_online(item,b));row.pack_start(self.start_button,False,False,0)
             if not local:row.pack_start(label('在线播放，无需下载','muted'),False,False,0)
-            elif item.get('unavailable'):row.pack_start(label('来源已失效，播放本地文件','muted'),False,False,0)
+            else:row.pack_start(label('来源已失效，播放本地文件' if item.get('unavailable') else '播放本地文件','muted'),False,False,0)
         else:row.pack_start(label('来源视频已失效，无法在线播放或下载' if item.get('unavailable') else '本地文件尚未下载或暂不可用','muted'),False,False,0)
         self.theater_button=icon_button('video-display-symbolic','影院模式',self.toggle_theater);self.fullscreen_button=icon_button('view-fullscreen-symbolic','全屏',self.toggle_fullscreen);row.pack_end(self.fullscreen_button,False,False,0);row.pack_end(self.theater_button,False,False,0);self.mode_row=row;self.control_row=Gtk.EventBox();self.control_row.add(row);self.player_box.pack_start(self.control_row,False,False,0)
         self.detail_left=left
         origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站'}.get(item.get('source'),'其他来源');left.pack_start(label(item.get('title',''),'title'),False,False,0);left.pack_start(label(' · '.join(x for x in (item.get('channel'),origin) if x),'muted'),False,False,0);meta=label(' · '.join(str(x) for x in (item.get('published'),f"{int(item['duration']//60)}:{int(item['duration']%60):02d}" if item.get('duration') else None) if x) or '时间和时长暂无资料','muted');left.pack_start(meta,False,False,0);left.pack_start(label(item.get('description') or '没有可用的原始简介。'),False,False,0)
-        if item.get('url'):left.pack_start(Gtk.LinkButton.new_with_label(item['url'],'查看来源'),False,False,0)
+        if item.get('url'):
+            source=Gtk.LinkButton.new_with_label(item['url'],'查看来源');source.set_halign(Gtk.Align.START);left.pack_start(source,False,False,0)
         right=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10);self.detail_right=right;right.set_size_request(160,-1);right.pack_start(label('内容操作','section'),False,False,0)
         if item.get('url') and not item.get('unavailable'):
             right.pack_start(button('下载',lambda *_:self.prepare_download(item),True),False,False,0)
@@ -689,10 +720,13 @@ class App(Gtk.Window):
             self.fail('无法读取或保存下载状态，请检查磁盘空间和权限');return
         box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         for item in rows:
-            row=Gtk.Box(spacing=10);row.get_style_context().add_class('card');details=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4);title=label(item['title']);title.set_ellipsize(3);title.set_max_width_chars(40);title.set_tooltip_text(item['title']);details.pack_start(title,False,False,0)
+            row=Gtk.Box(spacing=10);row.get_style_context().add_class('card');details=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);title=label(item['title'],'media-title');title.set_ellipsize(3);title.set_max_width_chars(40);title.set_tooltip_text(item['title']);details.pack_start(title,False,False,0)
             percent=downloader.progress_percent(item['detail']) if item['state'] in ('下载中','暂停') else None
             detail=f'当前文件 {percent:g}%' if percent is not None else ('已保存到媒体库' if item['state']=='完成' else item['detail'])
-            details.pack_start(label(item['state']+(' · '+detail if detail else ''),'muted'),False,False,0);row.pack_start(details,True,True,0)
+            status=label(item['state']+(' · '+detail if detail else ''),'job-failed' if item['state']=='失败' else 'muted');details.pack_start(status,False,False,0)
+            if percent is not None:
+                progress=Gtk.ProgressBar();progress.get_style_context().add_class('job-progress');progress.set_fraction(percent/100);progress.set_hexpand(True);progress.get_accessible().set_name(f'当前文件 {percent:g}%');details.pack_start(progress,False,False,0)
+            row.pack_start(details,True,True,0)
             actions=Gtk.Box(spacing=5);jid=item['id'];media=self.store.get(item['media_id'])
             if item['state'] in ('等待','下载中'):actions.pack_start(icon_button('media-playback-pause-symbolic','暂停',lambda _,j=jid:self.job_action(self.downloader.pause,j)),False,False,0)
             if item['state'] in ('暂停','中断','失败'):actions.pack_start(icon_button('media-playback-start-symbolic','继续' if item['state']!='失败' else '重新尝试',lambda _,j=jid:self.job_action(self.downloader.resume,j)),False,False,0)

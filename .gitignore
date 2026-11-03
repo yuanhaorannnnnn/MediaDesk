@@ -1,5 +1,6 @@
 /data/
 /dist/
+/.worktrees/
 /.research/
 /.design/
 /app.py

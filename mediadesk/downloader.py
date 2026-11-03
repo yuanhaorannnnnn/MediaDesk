@@ -25,18 +25,32 @@ def executable():
 
 def command(cookies=False,cancel=None):
     args=[executable(),'--ignore-config','--no-playlist']
+    if os.name=='nt':args+=['--encoding','utf-8']
     if shutil.which('node'):
         try:
             help_args=[args[0],'--ignore-config','--help']
-            help_text=_run_cancellable(help_args,cancel,2) if cancel is not None else subprocess.run(help_args,capture_output=True,text=True,errors='replace',timeout=2)
+            help_text=_run_cancellable(help_args,cancel,2) if cancel is not None else subprocess.run(help_args,capture_output=True,text=True,**({'encoding':'utf-8'} if os.name=='nt' else {}),errors='replace',timeout=2)
             if help_text.returncode==0 and '--js-runtimes' in help_text.stdout:args+=['--js-runtimes','node']
         except (OSError,subprocess.TimeoutExpired):pass
-    if cookies: args+=['--cookies-from-browser','chrome+gnomekeyring']
+    if cookies == 'bilibili_qr':
+        import sys
+        interpreter=sys.executable
+        try:
+            with open(executable(),'rb') as handle:line=handle.readline(512).decode().strip()
+            if line.startswith('#!/') and ' ' not in line[2:]:interpreter=line[2:]
+        except (OSError,UnicodeError):pass
+        return [interpreter,'-m','mediadesk.bilibili_login']+args[1:]
+    if cookies: args+=['--cookies-from-browser','chrome' if os.name=='nt' else 'chrome+gnomekeyring']
     return args
 
 
 def environment():
-    env=os.environ.copy(); sock=Path(f'/run/user/{os.getuid()}/bus')
+    env=os.environ.copy()
+    root=str(Path(__file__).resolve().parent.parent)
+    env['PYTHONPATH']=root+(os.pathsep+env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
+    if os.name=='nt':
+        env['PYTHONIOENCODING']='utf-8';return env
+    sock=Path(f'/run/user/{os.getuid()}/bus')
     if sock.exists():
         env.setdefault('DBUS_SESSION_BUS_ADDRESS',f'unix:path={sock}');env.setdefault('XDG_RUNTIME_DIR',str(sock.parent))
     return env
@@ -73,8 +87,30 @@ def reports_download_risk(line):
     return ('warning:' in text or 'error:' in text or text.startswith('[download]')) and any(x in text for x in ('retrying','retry in','timed out','timeout','connection reset','connection aborted','remote end closed','incomplete read','incompleteread','interrupted'))
 
 
+def spawn(args,**kwargs):
+    if os.name=='nt':
+        from .winprocess import Process
+        if kwargs.get('text'):kwargs.setdefault('encoding','utf-8')
+        return Process(args,**kwargs)
+    return subprocess.Popen(args,**kwargs)
+
+
+def wait_exited(proc):
+    if os.name=='nt':return proc.wait()
+    return os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOWAIT)
+
+
+def signal_process(proc,action):
+    if os.name=='nt':
+        if action=='pause':proc.pause_tree()
+        elif action=='resume':proc.resume_tree()
+        else:proc.terminate_tree()
+    else:os.killpg(proc.pid,getattr(signal,{'pause':'SIGSTOP','resume':'SIGCONT','stop':'SIGTERM','kill':'SIGKILL'}[action]))
+
+
 def leader_state(proc):
-    """Check our child without reaping it, preserving the process-group identity."""
+    """Check exit without losing the POSIX PGID or Windows Job identity."""
+    if os.name=='nt':return proc.poll() is not None
     if proc.returncode is not None:raise ChildProcessError('下载进程身份已失效')
     return os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT) is not None
 
@@ -82,9 +118,10 @@ def leader_state(proc):
 def finish_process(proc):
     """Wait without reaping, stop descendants, then reap the group leader."""
     import signal
+    if os.name=='nt':return proc.finish_tree()
     if proc.returncode is not None:raise ChildProcessError('下载进程身份已失效')
-    os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOWAIT)
-    try:os.killpg(proc.pid,signal.SIGKILL)
+    wait_exited(proc)
+    try:signal_process(proc,'kill')
     except ProcessLookupError:pass
     return proc.wait(timeout=3)
 
@@ -92,13 +129,17 @@ def finish_process(proc):
 def stop_process(proc,paused=False,lock=None):
     """Only signal the group while its unreaped leader anchors the PGID."""
     import signal,time
+    if os.name=='nt':
+        with lock or threading.Lock():
+            try:proc.finish_tree();return True
+            except (OSError,subprocess.TimeoutExpired):return False
     lock=lock or threading.Lock()
     with lock:
         try:leader_state(proc)
         except (ChildProcessError,OSError):return False
         try:
-            if paused:os.killpg(proc.pid,signal.SIGCONT)
-            os.killpg(proc.pid,signal.SIGTERM)
+            if paused:signal_process(proc,'resume')
+            signal_process(proc,'stop')
         except ProcessLookupError:pass
         except OSError:return False
     end=time.monotonic()+3
@@ -110,7 +151,7 @@ def stop_process(proc,paused=False,lock=None):
         time.sleep(.05)
     # The leader remains unreaped, so its ID cannot be reassigned here.
     with lock:
-        try:leader_state(proc);os.killpg(proc.pid,signal.SIGKILL)
+        try:leader_state(proc);signal_process(proc,'kill')
         except ProcessLookupError:pass
         except (ChildProcessError,OSError):return False
     end=time.monotonic()+3
@@ -126,6 +167,7 @@ def stop_process(proc,paused=False,lock=None):
 
 
 def probe_output(proc,is_paused):
+    if os.name=='nt':return probe_output_windows(proc,is_paused)
     import selectors,time
     output=bytearray();elapsed=0;last=time.monotonic()
     with selectors.DefaultSelector() as selector:
@@ -143,22 +185,57 @@ def probe_output(proc,is_paused):
     return output
 
 
+def probe_output_windows(proc,is_paused):
+    import queue
+    chunks=queue.Queue(maxsize=18);done=threading.Event()
+    def read():
+        try:
+            while not done.is_set():
+                chunk=proc.stdout.read(65536)
+                while not done.is_set():
+                    try:chunks.put(chunk,timeout=.1);break
+                    except queue.Full:pass
+                if not chunk:break
+        except (OSError,ValueError):pass
+        finally:
+            if not done.is_set():
+                try:chunks.put(b'',timeout=.2)
+                except queue.Full:pass
+    threading.Thread(target=read,daemon=True).start()
+    output=bytearray();elapsed=0;last=time.monotonic()
+    try:
+        while True:
+            try:chunk=chunks.get(timeout=.2)
+            except queue.Empty:chunk=None
+            now=time.monotonic()
+            if not is_paused():elapsed+=now-last
+            last=now
+            if elapsed>=60:raise ValueError('读取音视频信息超时；文件已保留，请重试')
+            if chunk==b'':return output
+            if chunk:output.extend(chunk)
+            if len(output)>1024*1024:raise ValueError('音视频信息异常；文件已保留，请重试')
+    finally:done.set()
+
+
 def inspect(url, cookies=False):
     identity=identify_url(url);sid=identity['id'];url=identity['url']
-    try:p=subprocess.run(command(cookies)+['--dump-single-json','--skip-download','--',url],capture_output=True,text=True,timeout=120,env=environment())
+    if identity['source']=='podcast':
+        from .podcasts import network_boundary
+        network_boundary(url)
+    try:p=subprocess.run(command(cookies if identity['source']!='podcast' else False)+['--dump-single-json','--skip-download','--',url],capture_output=True,text=True,**({'encoding':'utf-8'} if os.name=='nt' else {}),timeout=120,env=environment())
     except subprocess.TimeoutExpired:raise ValueError('获取视频资料超时，请检查网络后重试') from None
     if p.returncode: raise ValueError(error_message(p.stderr))
     raw=json.loads(p.stdout); fs=[]
     for f in raw.get('formats') or []:
         fid=str(f.get('format_id') or '')
         if not re.fullmatch(r'[A-Za-z0-9_.-]+',fid): continue
-        if (f.get('vcodec') or 'none')=='none' and (f.get('acodec') or 'none')=='none': continue
+        if (f.get('vcodec') or 'none')=='none' and (f.get('acodec') or 'none')=='none' and identity['source']!='podcast': continue
         fs.append({k:f.get(k) for k in ('format_id','ext','format_note','resolution','height','vcodec','acodec','filesize','filesize_approx')})
     return {'url':url,'title':raw.get('title') or sid,'channel':raw.get('channel') or raw.get('uploader') or '', 'description':raw.get('description') or '', 'thumbnail':raw.get('thumbnail') or '', 'duration':raw.get('duration'), 'published':raw.get('upload_date'), 'formats':fs}
 
 def _run_cancellable(args,cancel,timeout):
     if cancel.is_set(): raise InterruptedError('已取消预览')
-    proc=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,errors='replace',env=environment(),start_new_session=True)
+    proc=spawn(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,errors='replace',env=environment(),start_new_session=True)
     if hasattr(cancel,'bind'):cancel.bind(proc)
     output=['','']
     def read_pipe(index,pipe):
@@ -178,7 +255,7 @@ def _run_cancellable(args,cancel,timeout):
     finally:
         if hasattr(cancel,'finish'):cancel.finish(proc)
         else:
-            try:os.killpg(proc.pid,signal.SIGKILL)
+            try:signal_process(proc,'kill')
             except ProcessLookupError:pass
             finish_process(proc)
         for thread in readers:thread.join(timeout=3)
@@ -188,9 +265,14 @@ def _run_cancellable(args,cancel,timeout):
 
 def online_stream(url,cookies=False,cancel=None):
     identity=identify_url(url);sid=identity['id'];source=identity['url']
+    if identity['source']=='podcast':
+        from .podcasts import network_boundary
+        network_boundary(source)
+        if cancel is not None and cancel.is_set():raise InterruptedError('已取消预览')
+        return {'url':source,'audio_url':'','referer':'','user_agent':'MediaDesk/1','resolution':'','item':{'url':source,'title':urlparse(source).path.rsplit('/',1)[-1] or '播客单集'}}
     fmt='best[protocol=https]/best[protocol=m3u8_native]' if identity['source']=='youtube' else 'best[protocol=https]/bestvideo[protocol=https]+bestaudio[protocol=https]'
     args=(command(cookies,cancel) if cancel is not None else command(cookies))+['-f',fmt,'--dump-single-json','--skip-download','--',source]
-    try:p=_run_cancellable(args,cancel,120) if cancel is not None else subprocess.run(args,capture_output=True,text=True,timeout=120,env=environment())
+    try:p=_run_cancellable(args,cancel,120) if cancel is not None else subprocess.run(args,capture_output=True,text=True,**({'encoding':'utf-8'} if os.name=='nt' else {}),timeout=120,env=environment())
     except subprocess.TimeoutExpired:raise ValueError('获取播放地址超时，请检查网络后重试') from None
     if p.returncode:
         error=error_message(p.stderr)
@@ -225,6 +307,11 @@ class Downloads:
     def start(self,item,preference='quality',cookies=False,fmt=None,audio_only=False,job_id=None):
         if fmt and not re.fullmatch(r'[A-Za-z0-9_.-]+(?:\+[A-Za-z0-9_.-]+)?',fmt):raise ValueError('格式无效')
         identity=identify_url(item['url']);mid=self.store.save_source(item);jid=job_id or uuid.uuid4().hex
+        if identity['source']=='podcast':
+            from .podcasts import network_boundary
+            network_boundary(item['url'])
+            cookies=False
+            audio_only=urlparse(item['url']).path.rsplit('.',1)[-1].lower() in ('mp3','m4a','ogg','oga','opus','wav','aac')
         with self.lock:
             if self.stopping:raise ValueError('应用正在关闭')
             if mid in self.active or mid in self.deleting:raise ValueError('该视频正在下载或正在停止')
@@ -236,7 +323,7 @@ class Downloads:
             retry_file=oldopts.get('verification_retry',0)
             if not isinstance(retry_file,int) or isinstance(retry_file,bool) or retry_file<0:raise ValueError('无法读取重试记录，请检查任务数据')
             if previous and previous.get('detail') in (VERIFY_FAILED,STRICT_FAILED):retry_file+=1
-            strict=bool(oldopts.get('needs_strict_check')) or bool(previous and previous['state'] in ('中断','失败'))
+            strict=os.name=='nt' or bool(oldopts.get('needs_strict_check')) or bool(previous and previous['state'] in ('中断','失败'))
             options={'preference':preference,'cookies':cookies,'fmt':fmt,'audio_only':audio_only,'verification_retry':retry_file,'needs_strict_check':strict}
             # Persist the retry filename before clearing a previous verification failure.
             if previous:self.store.job_options(jid,options)
@@ -259,7 +346,7 @@ class Downloads:
             group_finished=False
             try:
                 if not update('下载中','准备下载'):return
-                if item.get('thumbnail'):
+                if identity['source']!='podcast' and item.get('thumbnail'):
                     try:
                         from .sources import thumbnail
                         thumbnail(self.store,item['thumbnail'])
@@ -267,7 +354,7 @@ class Downloads:
                 with self.lock:
                     if jid in self.cancelled or self.stopping:return
                 suffix=('.retry-'+hashlib.sha256(jid.encode()).hexdigest()[:16]+'-'+str(retry_file)) if retry_file else ''
-                template='%(title).180B ['+(identity['file_id'] if identity['source']=='bilibili' else '%(id)s')+']'+suffix+'.%(ext)s'
+                template='%(title).180B ['+(identity['file_id'] if identity['source'] in ('bilibili','podcast') else '%(id)s')+']'+suffix+'.%(ext)s'
                 args=command(cookies)+['--socket-timeout','30','--no-overwrites','--continue','--newline','--progress','--print','after_move:filepath','-P',str(self.store.media_dir),'-o',template]
                 if fmt:args+=['-f',fmt]
                 elif preference=='size':args+=['-S','+size,+br,+res']
@@ -275,7 +362,7 @@ class Downloads:
                 args+=['--',item['url']]
                 with self.lock:
                     if jid in self.cancelled or self.stopping:return
-                    proc=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace',env=environment(),start_new_session=True)
+                    proc=spawn(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace',env=environment(),start_new_session=True)
                     self.processes[jid]=proc
                 tail=[];last_update=0;last_progress=None;last_speed_known=False
                 import time
@@ -297,7 +384,7 @@ class Downloads:
                     elif line.startswith('[youtube]') and ('Extracting URL' in line or 'Downloading webpage' in line):update('下载中','正在获取下载地址')
                     elif line.startswith('[info]') and 'Downloading' in line:update('下载中','等待下载数据')
                     elif line.startswith('[Merger]'):update('下载中','正在合并音视频')
-                proc.stdout.close();os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOWAIT)
+                proc.stdout.close();wait_exited(proc)
                 with self.lock:code=finish_process(proc);group_finished=True;self.processes.pop(jid,None)
                 with self.lock:
                     if jid in self.cancelled:return
@@ -309,17 +396,17 @@ class Downloads:
                 with self.lock:
                     if jid in self.cancelled or self.stopping:return
                     self.processes.pop(jid,None)
-                    try:proc=subprocess.Popen(['ffprobe','-v','error','-show_entries','stream=codec_type','-of','json',str(path)],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=0,start_new_session=True)
+                    try:proc=spawn(['ffprobe','-v','error','-show_entries','stream=codec_type','-of','json',str(path)],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=0,start_new_session=True)
                     except FileNotFoundError:raise ValueError('缺少 FFprobe，无法检查音视频；文件已保留') from None
                     self.processes[jid]=proc;group_finished=False
                 def probe_paused():
                     with self.lock:return jid in self.paused
-                raw=probe_output(proc,probe_paused);proc.stdout.close();os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOWAIT)
+                raw=probe_output(proc,probe_paused);proc.stdout.close();wait_exited(proc)
                 with self.lock:code=finish_process(proc);group_finished=True;self.processes.pop(jid,None)
                 with self.lock:
                     if jid in self.cancelled or self.stopping:return
                 streams={v.get('codec_type') for v in json.loads(raw).get('streams',[])} if not code else set()
-                required={'audio'} if audio_only else {'audio','video'}
+                required={'audio'} if audio_only else ({'video'} if identity['source']=='podcast' else {'audio','video'})
                 if not required.issubset(streams):raise ValueError(VERIFY_FAILED)
                 if strict:
                     if not update('下载中','正在严格检查'):return
@@ -327,12 +414,12 @@ class Downloads:
                         if jid in self.cancelled or self.stopping:return
                         self.processes.pop(jid,None)
                         try:
-                            proc=subprocess.Popen(['ffmpeg','-nostdin','-v','error','-xerror','-i',str(path),'-map','0:v?','-map','0:a?','-f','null','-'],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True,errors='replace',start_new_session=True)
+                            proc=spawn(['ffmpeg','-nostdin','-v','error','-xerror','-i',str(path),'-map','0:v?','-map','0:a?','-f','null','-'],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True,errors='replace',start_new_session=True)
                         except FileNotFoundError:raise ValueError('缺少 FFmpeg，无法进行严格检查；文件已保留') from None
                         self.processes[jid]=proc;group_finished=False
                     errors=[]
                     for line in proc.stderr:errors.append(line.strip());errors=errors[-25:]
-                    proc.stderr.close();os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOWAIT)
+                    proc.stderr.close();wait_exited(proc)
                     with self.lock:code=finish_process(proc);group_finished=True;self.processes.pop(jid,None)
                     with self.lock:
                         if jid in self.cancelled or self.stopping:return
@@ -368,10 +455,14 @@ class Downloads:
                         try:proc.wait()
                         except Exception:return
                         while True:
-                            try:os.killpg(proc.pid,0)
+                            try:
+                                if os.name=='nt':
+                                    if not proc.pids():break
+                                else:os.killpg(proc.pid,0)
                             except ProcessLookupError:break
                             except OSError:return
                             time.sleep(1)
+                        if os.name=='nt':proc.finish_tree()
                         with self.lock:
                             self.processes.pop(jid,None);self.workers.pop(jid,None);self.active.discard(mid);self.paused.discard(jid);self.cancelled.discard(jid);finished.set()
                         self.notify(jid)
@@ -397,13 +488,13 @@ class Downloads:
                 if leader_state(proc):raise ValueError('任务正在结束，请稍后再试')
             except (ChildProcessError,OSError):raise ValueError('无法确认下载进程状态') from None
             job=next((j for j in self.store.jobs() if j['id']==jid),None)
-            try:os.killpg(proc.pid,signal.SIGSTOP)
+            try:signal_process(proc,'pause')
             except ProcessLookupError:raise ValueError('任务已结束，请刷新任务列表') from None
             self.paused.add(jid)
             try:
                 if job:self.store.job(jid,job['media_id'],'暂停',job['detail'])
             except Exception as exc:
-                try:os.killpg(proc.pid,signal.SIGCONT);self.paused.discard(jid)
+                try:signal_process(proc,'resume');self.paused.discard(jid)
                 except OSError:
                     if job:self.pending_states[jid]=(job['media_id'],'暂停',job['detail'])
                 raise ValueError('无法保存下载状态，请检查磁盘或权限') from exc
@@ -418,12 +509,12 @@ class Downloads:
             except (ChildProcessError,OSError):raise ValueError('无法确认下载进程状态') from None
             if jid in self.paused and running:
                 job=next((j for j in self.store.jobs() if j['id']==jid),None)
-                try:os.killpg(proc.pid,signal.SIGCONT)
+                try:signal_process(proc,'resume')
                 except ProcessLookupError:raise ValueError('任务已结束，请刷新任务列表') from None
                 try:
                     if job:self.store.job(jid,job['media_id'],'下载中',job['detail'])
                 except Exception as exc:
-                    try:os.killpg(proc.pid,signal.SIGSTOP)
+                    try:signal_process(proc,'pause')
                     except OSError:
                         self.paused.discard(jid)
                         if job:self.pending_states[jid]=(job['media_id'],'下载中',job['detail'])
@@ -455,8 +546,8 @@ class Downloads:
             if proc:
                 try:
                     leader_state(proc)
-                    if jid in self.paused:os.killpg(proc.pid,signal.SIGCONT)
-                    os.killpg(proc.pid,signal.SIGTERM)
+                    if jid in self.paused:signal_process(proc,'resume')
+                    signal_process(proc,'stop')
                 except ProcessLookupError:pass
                 except (ChildProcessError,OSError):
                     self.deleting.discard(mid);self.cancelled.discard(jid);raise ValueError('无法确认下载进程状态，任务和文件未删除') from None
@@ -465,7 +556,7 @@ class Downloads:
                 with self.lock:
                     proc=self.processes.get(jid)
                     if proc:
-                        try:leader_state(proc);os.killpg(proc.pid,signal.SIGKILL)
+                        try:leader_state(proc);signal_process(proc,'kill')
                         except ProcessLookupError:pass
                         except (ChildProcessError,OSError):raise ValueError('无法确认下载进程状态，任务和文件未删除') from None
                 if not finished.wait(22):raise ValueError('任务未能及时停止，任务和文件未删除；请稍后重试')
@@ -501,15 +592,15 @@ class Downloads:
             for jid,proc in self.processes.items():
                 try:
                     leader_state(proc)
-                    if jid in self.paused:os.killpg(proc.pid,signal.SIGCONT)
-                    os.killpg(proc.pid,signal.SIGTERM)
+                    if jid in self.paused:signal_process(proc,'resume')
+                    signal_process(proc,'stop')
                 except (ProcessLookupError,ChildProcessError):pass
                 except OSError:pass
         deadline=time.monotonic()+3
         for finished in workers.values():finished.wait(max(0,deadline-time.monotonic()))
         with self.lock:
             for proc in self.processes.values():
-                try:leader_state(proc);os.killpg(proc.pid,signal.SIGKILL)
+                try:leader_state(proc);signal_process(proc,'kill')
                 except (ProcessLookupError,ChildProcessError,OSError):pass
         deadline=time.monotonic()+3
         for finished in workers.values():finished.wait(max(0,deadline-time.monotonic()))

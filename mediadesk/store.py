@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import re
+from .paths import data_dir
 
 
 def youtube_id(url):
@@ -34,11 +35,9 @@ def identify_url(url):
         if match and len(parts)==1 and re.fullmatch(r'[1-9][0-9]{0,5}',parts[0]):
             bv=match.group(1);part=int(parts[0]);sid=f'{bv}_p{part}'
             return {'source':'bilibili','id':sid,'file_id':sid,'url':f'https://www.bilibili.com/video/{bv}?p={part}'}
-    raise ValueError('请输入单个 YouTube 或 B 站 BV 视频链接')
+    from .podcasts import enclosure_identity
+    return enclosure_identity(url)
 
-
-def data_dir():
-    return Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'mediadesk'
 
 
 class Store:
@@ -85,8 +84,8 @@ class Store:
     def save_source(self,item):
         identity=identify_url(item['url'])
         if identity['source']=='youtube':return self.save_youtube(item)
-        sid=identity['id'];mid='bilibili:'+sid
-        record=(mid,'bilibili',sid,str(item.get('title') or sid),str(item.get('channel') or ''),str(item.get('description') or ''),str(item.get('thumbnail') or ''),identity['url'],item.get('duration'),item.get('published'),json.dumps(item.get('metadata') or {},ensure_ascii=False))
+        sid=identity['id'];source=identity['source'];mid=source+':'+sid
+        record=(mid,source,sid,str(item.get('title') or sid),str(item.get('channel') or ''),str(item.get('description') or ''),str(item.get('thumbnail') or ''),identity['url'],item.get('duration'),item.get('published'),json.dumps(item.get('metadata') or {},ensure_ascii=False))
         with self.connection() as c:
             c.execute('''INSERT INTO media(id,source,source_id,title,channel,description,thumbnail,url,duration,published,metadata) VALUES(?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(id) DO UPDATE SET title=excluded.title,channel=excluded.channel,description=CASE WHEN excluded.description='' THEN media.description ELSE excluded.description END,thumbnail=CASE WHEN excluded.thumbnail='' THEN media.thumbnail ELSE excluded.thumbnail END,duration=COALESCE(excluded.duration,media.duration),published=COALESCE(excluded.published,media.published),metadata=CASE WHEN excluded.metadata='{}' THEN media.metadata ELSE excluded.metadata END,updated_at=CURRENT_TIMESTAMP''',record)

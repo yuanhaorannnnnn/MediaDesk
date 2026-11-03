@@ -6,6 +6,7 @@ import sys
 import os
 import subprocess
 from pathlib import Path
+from .downloader import environment
 
 # Existing plugin already owns the user's credential lifecycle. A packaged app
 # can override both paths without importing a second Python runtime into GTK.
@@ -26,7 +27,7 @@ def list_youtube(kind, playlist_id=''):
     if not SCRIPT.is_file() or not Path(PYTHON).is_file(): raise ValueError('YouTube 连接组件不可用，请检查设置')
     args=[PYTHON,str(SCRIPT),kind]
     if kind=='playlist-items': args+=[playlist_id]
-    p=subprocess.run(args,capture_output=True,text=True,timeout=330 if kind=='auth' else 120)
+    p=subprocess.run(args,capture_output=True,text=True,encoding='utf-8' if os.name=='nt' else None,env=environment(),timeout=330 if kind=='auth' else 120,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
     if p.returncode: raise ValueError((p.stderr.strip().splitlines()[-1] if p.stderr.strip() else '读取 YouTube 失败：请检查账号授权、网络或 API 配额')[:220])
     return json.loads(p.stdout)
 
@@ -36,7 +37,7 @@ def stream_youtube(kind,on_page,playlist_id=''):
     args=[PYTHON,str(SCRIPT),kind]
     if kind=='playlist-items':args.append(playlist_id)
     args.append('--stream')
-    with subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True) as proc:
+    with subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8' if os.name=='nt' else None,env=environment(),creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0) as proc:
         try:
             for line in proc.stdout:
                 page=json.loads(line)

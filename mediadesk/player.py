@@ -1,12 +1,26 @@
-"""GTK/X11 native libVLC player; no dependency on python-vlc."""
+"""GTK native libVLC player on X11 and Windows."""
 import ctypes as C
 from pathlib import Path
+import os
 
 import gi
-gi.require_version('Gtk','3.0'); gi.require_version('GdkX11','3.0')
-from gi.repository import Gtk, GLib, GdkX11
+gi.require_version('Gtk','3.0')
+from gi.repository import Gtk, GLib
+if os.name!='nt':
+    gi.require_version('GdkX11','3.0')
+    from gi.repository import GdkX11
 
-lib=C.CDLL('libvlc.so.5'); PTR=C.c_void_p
+_dll_handles=[]
+if os.name=='nt':
+    candidates=[os.environ.get('MEDIADESK_VLC_DIR')]
+    candidates += [str(Path(os.environ.get(key,''))/'VideoLAN/VLC') for key in ('ProgramW6432','ProgramFiles','ProgramFiles(x86)') if os.environ.get(key)]
+    directory=next((Path(p) for p in candidates if p and (Path(p)/'libvlc.dll').is_file()),None)
+    if directory is None:raise RuntimeError('未找到 VLC；请安装同架构 VLC 或设置 MEDIADESK_VLC_DIR')
+    _dll_handles.append(os.add_dll_directory(str(directory)))
+    os.environ.setdefault('VLC_PLUGIN_PATH',str(directory/'plugins'))
+    lib=C.CDLL(str(directory/'libvlc.dll'))
+else:lib=C.CDLL('libvlc.so.5')
+PTR=C.c_void_p
 
 def api(name, result, args):
     f=getattr(lib,name);f.restype=result;f.argtypes=args;return f
@@ -21,7 +35,12 @@ _release_media=api('libvlc_media_release',None,[PTR])
 _new_player=api('libvlc_media_player_new',PTR,[PTR])
 _release_player=api('libvlc_media_player_release',None,[PTR])
 _set_media=api('libvlc_media_player_set_media',None,[PTR,PTR])
-_set_xwindow=api('libvlc_media_player_set_xwindow',None,[PTR,C.c_uint32])
+if os.name=='nt':
+    _set_hwnd=api('libvlc_media_player_set_hwnd',None,[PTR,PTR])
+    _gdk=C.CDLL('libgdk-3-0.dll')
+    _win_handle=_gdk.gdk_win32_window_get_handle;_win_handle.restype=PTR;_win_handle.argtypes=[PTR]
+    _capsule=C.pythonapi.PyCapsule_GetPointer;_capsule.restype=PTR;_capsule.argtypes=[C.py_object,C.c_char_p]
+else:_set_xwindow=api('libvlc_media_player_set_xwindow',None,[PTR,C.c_uint32])
 _play=api('libvlc_media_player_play',C.c_int,[PTR]);_pause=api('libvlc_media_player_pause',None,[PTR]);_stop=api('libvlc_media_player_stop',None,[PTR]);_time=api('libvlc_media_player_get_time',C.c_int64,[PTR]);_length=api('libvlc_media_player_get_length',C.c_int64,[PTR]);_seek=api('libvlc_media_player_set_time',None,[PTR,C.c_int64]);_state=api('libvlc_media_player_get_state',C.c_int,[PTR])
 _seekable=api('libvlc_media_player_is_seekable',C.c_int,[PTR])
 _volume=api('libvlc_audio_set_volume',C.c_int,[PTR,C.c_int]);_mute=api('libvlc_audio_set_mute',None,[PTR,C.c_int])
@@ -32,14 +51,14 @@ class Player(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL,spacing=8)
         # VLC 3.x's avcodec/VDPAU path can stall AV1; native dav1d handles it.
         options=(C.c_char_p*1)(b'--codec=dav1d,any')
-        self.instance=_new(1,options)
+        self.instance=_new(0,None) if os.name=='nt' else _new(1,options)
         if not self.instance: raise RuntimeError('无法初始化 libVLC')
         self.player=_new_player(self.instance)
         if not self.player: _release(self.instance);raise RuntimeError('无法创建播放器')
         self.closed=False
         self.area=Gtk.DrawingArea();self.area.set_size_request(360,270);self.area.set_hexpand(True);self.area.set_vexpand(True);self.area.connect('realize',self._realize);self.area.connect('size-allocate',self._schedule_area_resize)
         # VLC owns an opaque native surface; CSD's RGBA visual leaks through compositing.
-        self.area.set_visual(self.area.get_screen().get_system_visual())
+        if os.name!='nt':self.area.set_visual(self.area.get_screen().get_system_visual())
         self.area_height=270;self.area_resize_source=0;self.window_resize_handler=0;self.resize_window=None
         self.pack_start(self.area,True,True,0)
         controls=Gtk.Box(spacing=6);self.controls=controls;self.toggle=Gtk.Button();self.toggle.connect('clicked',lambda *_:_pause(self.player) if _state(self.player)==3 else _play(self.player));controls.pack_start(self.toggle,False,False,0)
@@ -53,8 +72,14 @@ class Player(Gtk.Box):
 
     def _realize(self, area):
         window=area.get_window()
-        if not isinstance(window,GdkX11.X11Window): raise RuntimeError('当前会话不是 X11；请通过启动器使用 XWayland')
-        _set_xwindow(self.player,window.get_xid())
+        if os.name=='nt':
+            window.ensure_native()
+            handle=_win_handle(_capsule(window.__gpointer__,None))
+            if not handle:raise RuntimeError('无法获得 Windows 窗口句柄')
+            _set_hwnd(self.player,handle)
+        else:
+            if not isinstance(window,GdkX11.X11Window):raise RuntimeError('当前会话不是 X11；请通过启动器使用 XWayland')
+            _set_xwindow(self.player,window.get_xid())
         top=area.get_toplevel()
         if self.window_resize_handler and self.resize_window:self.resize_window.disconnect(self.window_resize_handler);self.window_resize_handler=0
         if isinstance(top,Gtk.Window):self.resize_window=top;self.window_resize_handler=top.connect('size-allocate',self._schedule_area_resize)

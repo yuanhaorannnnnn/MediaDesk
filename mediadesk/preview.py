@@ -30,7 +30,7 @@ class PreviewCancellation(threading.Event):
 
     def _kill(self):
         if self._process:
-            try:os.killpg(self._process.pid,signal.SIGKILL)
+            try:downloader.signal_process(self._process,'kill')
             except ProcessLookupError:pass
 
     def set(self):
@@ -80,7 +80,7 @@ class HoverPreview:
         if fresh: item = {**item, **fresh}
         if item.get('path') and Path(item['path']).is_file():
             self.play(serial, {'path': item['path']})
-        elif item.get('url') and not item.get('unavailable'):
+        elif item.get('source') != 'podcast' and item.get('url') and not item.get('unavailable'):
             self.pending = (serial, item['url'])
             self.resolve_next()
         return False

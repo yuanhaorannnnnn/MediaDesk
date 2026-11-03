@@ -939,7 +939,7 @@ class DesktopTests(unittest.TestCase):
         self.store.set_setting('cookies',True)
         with mock.patch('mediadesk.app.sources.list_youtube',side_effect=ValueError('需要连接 YouTube 账号')), mock.patch('mediadesk.app.bilibili.stream') as stream:
             self.window.show_settings()
-            self.assertEqual(self.window.bilibili_connect_button.get_label(),'连接 B 站')
+            self.assertEqual(self.window.bilibili_connect_button.get_label(),'使用 Chrome 连接')
             with mock.patch('mediadesk.app.Gtk.MessageDialog') as dialog:
                 dialog.return_value.run.return_value=Gtk.ResponseType.OK
                 self.window.toggle_bilibili_account()
@@ -948,7 +948,7 @@ class DesktopTests(unittest.TestCase):
                 self.window.toggle_bilibili_account()
             self.assertFalse(self.store.setting('bilibili_cookies',True))
             self.assertTrue(self.store.setting('cookies',False))
-            self.assertEqual(self.window.bilibili_connect_button.get_label(),'连接 B 站')
+            self.assertEqual(self.window.bilibili_connect_button.get_label(),'使用 Chrome 连接')
 
     def test_youtube_connect_action_matches_verified_state(self):
         with mock.patch('mediadesk.app.sources.list_youtube',return_value=[{'snippet':{'title':'YouTube 用户'}}]):

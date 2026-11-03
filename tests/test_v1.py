@@ -205,7 +205,7 @@ class AdapterTests(unittest.TestCase):
         from mediadesk import oauth_bridge
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as d:
-            root=Path(d);(root/'client.json').write_text('{}')
+            root=Path(d);(root/'client.json').write_text(json.dumps({'installed':{'client_id':'sample','client_secret':'sample','auth_uri':'https://accounts.google.com/o/oauth2/auth','token_uri':'https://oauth2.googleapis.com/token'}}))
             cred=SimpleNamespace(token='sample',refresh_token='refresh',token_uri='https://example.invalid/token',client_id='sample',client_secret='sample',scopes=[oauth_bridge.SCOPE],expiry=None)
             flow=mock.Mock();flow.run_local_server.return_value=cred
             with mock.patch.object(oauth_bridge,'CONFIG',root),mock.patch.object(oauth_bridge.InstalledAppFlow,'from_client_secrets_file',return_value=flow):

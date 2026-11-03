@@ -16,7 +16,7 @@ Section: video
 Priority: optional
 Architecture: all
 Maintainer: MediaDesk personal project
-Depends: python3, python3-gi, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, librsvg2-common, libvlc5, vlc-plugin-base, vlc-plugin-video-output, ffmpeg, yt-dlp, python3-requests, python3-google-auth, python3-google-auth-oauthlib, python3-secretstorage, xdg-user-dirs
+Depends: python3, python3-qrcode, python3-gi, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, librsvg2-common, libvlc5, vlc-plugin-base, vlc-plugin-video-output, ffmpeg, yt-dlp, python3-requests, python3-google-auth, python3-google-auth-oauthlib, python3-secretstorage, xdg-user-dirs
 Recommends: nodejs
 Description: Personal media library and download workspace
  Local Ubuntu media library with YouTube integration and libVLC playback.

@@ -12,6 +12,7 @@ import gi
 gi.require_version('Gtk','3.0');gi.require_version('Gdk','3.0')
 from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, Gio
 from .store import Store, youtube_id, identify_url
+from .paths import google_config_dir
 from . import downloader, sources, bilibili
 from .player import Player
 from .preview import HoverPreview
@@ -146,6 +147,14 @@ CSS+=media_row_css('#495051')
 LIGHT_CSS+=media_row_css('#c8cecb')
 NABIS_CSS+=media_row_css('#584957')
 NEO_IMPRESSION_CSS+=media_row_css('#b9cec4')
+# Windows GTK may inherit a 9 pt system font; preserve the existing role scale
+# while giving body and metadata a readable baseline on that platform.
+WINDOWS_TYPE_CSS=b'''*{font-family:'Noto Sans CJK SC','Noto Sans SC','Microsoft YaHei UI',Sans;font-size:15px}
+.title{font-family:'Noto Serif CJK SC','Noto Serif SC','Microsoft YaHei UI',serif}
+label.media-title{font-family:'Noto Sans CJK SC','Noto Sans SC','Microsoft YaHei UI',Sans;font-size:16px}
+.sidebar .nav-title,.status,button.view-mode .detail-glyph{font-size:14px}'''
+if os.name=='nt':
+    CSS+=WINDOWS_TYPE_CSS;LIGHT_CSS+=WINDOWS_TYPE_CSS;NABIS_CSS+=WINDOWS_TYPE_CSS;NEO_IMPRESSION_CSS+=WINDOWS_TYPE_CSS
 THEMES={'dark':('深色',CSS,True),'light':('浅色',LIGHT_CSS,False),
         'nabis':('纳比派',NABIS_CSS,True),'neo-impressionism':('新印象主义',NEO_IMPRESSION_CSS,False)}
 
@@ -183,6 +192,13 @@ def async_call(fn,done,fail):
 
 def safe_dirs():
     out=[]
+    if os.name=='nt':
+        for kind in (GLib.UserDirectory.DIRECTORY_VIDEOS,GLib.UserDirectory.DIRECTORY_MUSIC,GLib.UserDirectory.DIRECTORY_DOWNLOAD):
+            value=GLib.get_user_special_dir(kind)
+            if value:
+                path=Path(value)
+                if path.is_dir() and path.resolve()!=Path.home().resolve() and path not in out:out.append(path)
+        return out
     for typ in ('VIDEOS','MUSIC','DOWNLOAD'):
         p=subprocess.run(['xdg-user-dir',typ],capture_output=True,text=True,check=False)
         if p.returncode or not p.stdout.strip():continue
@@ -294,14 +310,25 @@ class App(Gtk.Window):
         self.message(text);self.retry_action=action;self.retry_button.show();return False
 
     def setup(self):
-        outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);outer.set_border_width(55);outer.set_hexpand(True);outer.set_vexpand(True)
-        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);card.get_style_context().add_class('card');card.set_size_request(520,-1);card.set_halign(Gtk.Align.CENTER);card.set_valign(Gtk.Align.CENTER);outer.pack_start(card,True,True,0)
-        titles=['选择内容来源','连接 YouTube 账号','发现本地媒体','选择下载偏好','准备完成'];s=self.setup_step
+        outer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16);outer.set_border_width(25);outer.set_hexpand(True);outer.set_vexpand(True)
+        shell=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);shell.get_style_context().add_class('card');shell.set_size_request(480,-1);shell.set_halign(Gtk.Align.CENTER);outer.pack_start(shell,True,True,0)
+        card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);scroll=Gtk.ScrolledWindow();scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.ALWAYS);scroll.set_vexpand(True);scroll.add(card);shell.pack_start(scroll,True,True,0)
+        titles=['选择内容来源','连接账号','发现本地媒体','选择下载偏好','准备完成'];s=self.setup_step
         card.pack_start(label(f'{s+1} / 5  ·  首次设置','muted'),False,False,0);card.pack_start(label(titles[s],'title'),False,False,0)
-        if s==0:card.pack_start(label('连接 YouTube 账号，或添加 YouTube 和 B 站视频链接。'),False,False,0)
+        if s==0:card.pack_start(label('连接 YouTube 或 B 站账号，或直接添加视频链接。'),False,False,0)
         if s==1:
-            card.pack_start(label('使用 Google 只读授权读取订阅、喜欢的视频与播放列表；请求会发送给 Google。可以跳过，之后再连接。'),False,False,0)
-            card.pack_start(button('连接 Google 账号',self.authorize,True),False,False,0)
+            card.pack_start(label('扫码会向 B 站请求二维码；账号连接可跳过，也可稍后设置。'),False,False,0)
+            qr=button('扫码连接 B 站',self.connect_bilibili_qr);qr.set_halign(Gtk.Align.START);card.pack_start(qr,False,False,0)
+            self.account_status_widgets={}
+            for source,title,description in [('youtube','YouTube','使用 Google 只读授权读取订阅、喜欢的视频和播放列表，请求会发送给 Google。'),('bilibili','B 站','用 B 站手机客户端扫码连接，读取关注和收藏；也可选择读取 Chrome 登录状态。')]:
+                card.pack_start(label(title,'section'),False,False,0);card.pack_start(label(description,'muted'),False,False,0)
+                state=label(self.account_text(source));self.account_status_widgets[source]=state;card.pack_start(state,False,False,0)
+                if source=='youtube':
+                    self.youtube_connect_button=button('连接 Google 账号',self.authorize);self.youtube_connect_button.set_halign(Gtk.Align.START);card.pack_start(self.youtube_connect_button,False,False,0)
+                    self.youtube_disconnect_button=button('断开连接',self.disconnect_youtube);self.youtube_disconnect_button.set_halign(Gtk.Align.START);self.youtube_disconnect_button.set_no_show_all(True);card.pack_start(self.youtube_disconnect_button,False,False,0)
+                    self.youtube_import_button=button('导入 Google 客户端配置',self.import_google_client);self.youtube_import_button.set_halign(Gtk.Align.START);self.youtube_import_button.set_no_show_all(True);card.pack_start(self.youtube_import_button,False,False,0)
+                else:
+                    self.bilibili_connect_button=button('使用 Chrome 连接',self.toggle_bilibili_account);self.bilibili_connect_button.set_halign(Gtk.Align.START);card.pack_start(self.bilibili_connect_button,False,False,0)
             self.cookie_check=Gtk.CheckButton(label='允许解析、播放和下载时读取 Chrome 登录状态（Cookie）');self.cookie_check.set_active(self.store.setting('cookies',False));self.cookie_check.connect('toggled',lambda w:self.store.set_setting('cookies',w.get_active()));card.pack_start(self.cookie_check,False,False,0)
         if s==2:
             dirs=safe_dirs();card.pack_start(label('扫描所选目录及子目录，媒体文件路径会保存到本地库；不移动或重命名文件。'),False,False,0)
@@ -320,11 +347,11 @@ class App(Gtk.Window):
                 rb.set_active(self.store.setting('preference','quality')==key)
                 rb.connect('toggled',lambda w,k=key:self.store.set_setting('preference',k) if w.get_active() else None);card.pack_start(rb,False,False,0)
         if s==4:card.pack_start(label('现在可以进入媒体库；跳过的步骤可以稍后再设置。'),False,False,0)
-        card.pack_start(Gtk.Box(),True,True,0);row=Gtk.Box(spacing=8)
+        row=Gtk.Box(spacing=8)
         if s:row.pack_start(button('上一步',lambda *_:self.setup_move(-1)),False,False,0)
         row.pack_end(button('进入媒体库' if s==4 else '继续',self.setup_next,True),False,False,0)
         if s<4:row.pack_end(button('跳过',self.setup_next),False,False,0)
-        card.pack_start(row,False,False,0);self.replace(outer)
+        shell.pack_start(row,False,False,0);self.replace(outer)
 
     def setup_move(self,n):self.setup_step+=n;self.setup()
     def setup_next(self,*_):
@@ -335,17 +362,31 @@ class App(Gtk.Window):
 
     def authorize(self,*_):
         self.message('正在检查 Google 授权…')
+        if self.account_surface_active():self.account_view_status('youtube','checking')
         self.youtube_auth_generation+=1;request=self.youtube_auth_generation
         def done(_):
             if request!=self.youtube_auth_generation:return False
             self.store.set_setting('youtube_account_enabled',True);self.account_cache.pop('youtube',None)
             self.setup_authenticated=True;self.message('正在验证 Google 账号…')
-            if getattr(self,'account_status_widgets',None) and getattr(self,'active_nav','') in ('settings','platform-youtube','platform-bilibili'):self.check_account('youtube')
+            if self.account_surface_active():self.check_account('youtube')
             return False
         def failed(error):
-            if request==self.youtube_auth_generation:self.fail(error)
+            if request==self.youtube_auth_generation:
+                self.fail(error)
+                if self.account_surface_active():self.account_view_status('youtube','unknown',error)
             return False
         async_call(lambda:sources.list_youtube('auth'),done,failed)
+
+    def import_google_client(self,*_):
+        dialog=Gtk.FileChooserDialog(title='选择 Google OAuth 客户端配置文件',transient_for=self,action=Gtk.FileChooserAction.OPEN)
+        dialog.add_buttons('取消',Gtk.ResponseType.CANCEL,'导入',Gtk.ResponseType.OK);response=dialog.run();path=dialog.get_filename();dialog.destroy()
+        if response!=Gtk.ResponseType.OK or not path:return
+        try:
+            from .oauth_config import import_client
+            import_client(path)
+        except (ValueError,OSError) as exc:
+            self.account_status_widgets['youtube'].set_text('导入失败：'+str(exc)+'。请选择正确的配置文件后重试。');return
+        self.account_status_widgets['youtube'].set_text('配置已导入，请连接 Google 账号。');self.youtube_import_button.hide();self.youtube_connect_button.show()
 
     def choose_scan_dir(self, container):
         d=Gtk.FileChooserDialog(title='选择媒体目录',transient_for=self,action=Gtk.FileChooserAction.SELECT_FOLDER)
@@ -373,6 +414,7 @@ class App(Gtk.Window):
         self.collection_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=2);side.pack_start(self.collection_box,False,False,0);self.refresh_collections()
         side.pack_start(nav_button('新建列表','folder-new-symbolic',self.new_collection),False,False,0)
         side.pack_start(label('发现','nav-title'),False,False,0)
+        add_nav('podcasts','播客','audio-x-generic-symbolic',self.show_podcasts)
         add_nav('discover-follow','关注','avatar-default-symbolic',lambda:self.show_discovery('follow'))
         add_nav('discover-collections','收藏与播放列表','user-bookmarks-symbolic',lambda:self.show_discovery('collections'))
         side.pack_start(label('平台','nav-title'),False,False,0)
@@ -412,7 +454,10 @@ class App(Gtk.Window):
     def display_rows(self,title,rows,loading=False,query=''):
         self.rows=rows;self.rows_title=title;self.rows_query=query;self.clear_content()
         snapshot=getattr(self,'collection_discovery_snapshot',None)
-        if snapshot and self.source_kind in ('likes','playlist-items','bili-favorites'):
+        context=getattr(self,'xiaoyuzhou_context',None)
+        if context and self.source_kind=='playlist-items':
+            self.content.pack_start(button(self.imported_program_back_label(context),lambda *_:self.return_imported_programs(context)),False,False,0)
+        elif snapshot and self.source_kind in ('likes','playlist-items','bili-favorites'):
             back=button('← 返回收藏与播放列表',lambda *_:self.show_discovery('collections',snapshot));self.content.pack_start(back,False,False,0)
         heading=Gtk.Box(spacing=12);heading.get_style_context().add_class('editorial-heading');heading.pack_start(label(title,'title'),True,True,0);self.rows_count=label(f'{len(rows)} 项'+(' · 正在读取…' if loading else ''),'muted');heading.pack_end(self.rows_count,False,False,0);self.content.pack_start(heading,False,False,0)
         if not rows and not loading:
@@ -516,12 +561,12 @@ class App(Gtk.Window):
     def append_cards(self,rows,start):
         box=self.rows_box
         for i,item in enumerate(rows,start):
-            origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站'}.get(item.get('source'),'其他来源');channel=item.get('channel');state=('本地可用' if Path(item['path']).is_file() else '文件缺失') if item.get('path') else '未下载'
+            origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站','podcast':'播客'}.get(item.get('source'),'其他来源');channel=item.get('channel');state=('本地可用' if Path(item['path']).is_file() else '文件缺失') if item.get('path') else '未下载'
             if item.get('unavailable'):state='来源已失效'+(' · 本地可用' if item.get('path') and Path(item['path']).is_file() else '')
             if self.media_view=='grid':
                 card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=7);card.set_border_width(6);card.set_size_request(210,-1)
                 artwork=MediaCover(190);card.pack_start(artwork,False,False,0)
-                if item.get('thumbnail'):
+                if item.get('thumbnail') and item.get('source')!='podcast':
                     if self.source_kind=='creator-local':self.load_cached_art(artwork,item['thumbnail'])
                     else:self.load_art(artwork,item['thumbnail'])
                 details=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5);card.pack_start(details,False,False,0)
@@ -549,7 +594,8 @@ class App(Gtk.Window):
                 return False
             b.connect('button-press-event',context_press)
             b.connect('popup-menu',lambda widget,idx=i:self.show_media_menu(widget,idx))
-            if self.media_view=='grid' and (self.source_kind!='creator-local' or (item.get('path') and Path(item['path']).is_file())):self.hover_preview.track(b,artwork,item)
+            local_preview=bool(item.get('path') and Path(item['path']).is_file())
+            if self.media_view=='grid' and (self.source_kind!='creator-local' or local_preview) and (item.get('source')!='podcast' or local_preview):self.hover_preview.track(b,artwork,item)
             child=Gtk.FlowBoxChild();child.row_index=i;child.media_item=item;child.sort_state=3 if item.get('unavailable') else {'本地可用':0,'未下载':1,'文件缺失':2}[state];child.search_text=(str(item.get('title') or '')+' '+str(item.get('channel') or '')).casefold();child.add(b);box.add(child)
         box.show_all();self.refresh_rows_filter()
 
@@ -605,17 +651,19 @@ class App(Gtk.Window):
             except Exception:pass
         future.add_done_callback(done)
 
-    def load_source(self,kind,playlist_id=''):
+    def load_source(self,kind,playlist_id='',program=None):
         if not self.store.setting('youtube_account_enabled',True):
             self.show_settings();self.message('YouTube 已断开，请先连接账号');return
+        self.xiaoyuzhou_context=program
         self.source_kind=kind;self.select_nav('discover-follow' if kind=='subscriptions' else 'discover-collections')
         title={'likes':'喜欢的视频','playlists':'播放列表','subscriptions':'订阅频道','playlist-items':'播放列表内容'}[kind]
+        if program:title=program['title']+' · YouTube 作品';self.select_nav('podcasts')
         if kind in ('likes','playlist-items'):
             self.display_rows(title,[],loading=True);generation=self.view_generation;self.message('正在后台读取 YouTube…');count=[0]
             def page(raw):
                 items=[]
                 for value in raw:
-                    item=sources.normalize(value,kind)
+                    item={**sources.normalize(value,kind),'source':'youtube'}
                     try:
                         if item['url']:youtube_id(item['url']);items.append(item)
                     except ValueError:continue
@@ -633,7 +681,7 @@ class App(Gtk.Window):
                 self.message(f'读取完成：{count[0]} 项'+('；重新打开全部内容查看' if not current else ''));return False
             def failed(error):
                 if generation==self.view_generation:
-                    self.rows_count.set_text(f'{len(self.rows)} 项 · 读取未完成');retry=button('重新读取',lambda *_:self.load_source(kind,playlist_id));self.content.pack_start(retry,False,False,0);retry.set_halign(Gtk.Align.START);retry.show();self.message('读取未完成：'+error)
+                    self.rows_count.set_text(f'{len(self.rows)} 项 · 读取未完成');retry=button('重新读取',lambda *_:self.load_source(kind,playlist_id,program=program));self.content.pack_start(retry,False,False,0);retry.set_halign(Gtk.Align.START);retry.show();self.message('读取未完成：'+error)
                 else:self.fail(error)
                 return False
             async_call(lambda:sources.stream_youtube(kind,page,playlist_id),done,failed);return
@@ -646,7 +694,7 @@ class App(Gtk.Window):
             self.rows=items;self.display_source(kind,items)
             self.message(f'读取完成：{len(items)} 项');return False
         def failed(error):
-            if generation==self.view_generation:self.set_content(label(title,'title'),label('读取失败：'+error,'muted'),button('重试',lambda *_:self.load_source(kind,playlist_id)))
+            if generation==self.view_generation:self.set_content(label(title,'title'),label('读取失败：'+error,'muted'),button('重试',lambda *_:self.load_source(kind,playlist_id,program=program)))
             self.fail(error);return False
         async_call(fetch,done,failed)
 
@@ -738,7 +786,7 @@ class App(Gtk.Window):
                             name=value.get('title') or '未命名收藏夹';item={'source':'bilibili','name':name,'action':lambda _,i=value,n=name:self.load_bilibili('favorites',str(i['id']),n)}
                         items.append(item)
                     accept('bilibili',items)
-                bilibili.stream('followings' if category=='follow' else 'folders',page);finish('bilibili')
+                self.bilibili_stream('followings' if category=='follow' else 'folders',page);finish('bilibili')
             except Exception as exc:finish('bilibili',('读取未完成：' if received['bilibili'] else '读取失败：')+str(exc))
         if snapshot:render()
         else:threading.Thread(target=youtube,daemon=True).start();threading.Thread(target=bili,daemon=True).start()
@@ -772,7 +820,7 @@ class App(Gtk.Window):
                         start=len(self.rows);self.rows.extend(rows);self.append_cards(rows,start);self.rows_count.set_text(f'{len(self.rows)} 项 · 正在读取…')
                     return False
                 GLib.idle_add(show)
-            def fetch():bilibili.stream('favorites',page,fid)
+            def fetch():self.bilibili_stream('favorites',page,fid)
             def done(_):
                 if generation==self.view_generation:
                     if self.rows:self.rows_count.set_text(f'{len(self.rows)} 项')
@@ -800,7 +848,7 @@ class App(Gtk.Window):
                     entry=Gtk.ListBoxRow();entry.add(row);box.add(entry)
                 box.show_all();status.set_text(f'{count[0]} 项 · 正在读取…');return False
             GLib.idle_add(show)
-        def fetch():bilibili.stream(kind,page,fid)
+        def fetch():self.bilibili_stream(kind,page,fid)
         def done(_):
             if generation==self.view_generation:status.set_text(f'{count[0]} 项')
             self.message(f'B 站读取完成：{count[0]} 项');return False
@@ -854,8 +902,13 @@ class App(Gtk.Window):
         self.clear_content();nav=Gtk.Box(spacing=8);self.detail_nav=nav;nav.pack_start(button('← 返回列表',lambda *_:self.return_rows()),False,False,0)
         prev=icon_button('go-previous-symbolic','上一条',lambda *_:self.open_row(matches[position-1]));prev.set_sensitive(position>0);nxt=icon_button('go-next-symbolic','下一条',lambda *_:self.open_row(matches[position+1]));nxt.set_sensitive(0<=position<len(matches)-1);nav.pack_end(nxt,False,False,0);nav.pack_end(prev,False,False,0);self.content.pack_start(nav,False,False,0)
         content=Gtk.Box(spacing=20);left=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);content.pack_start(left,True,True,0)
+        if item.get('source')=='podcast' and item.get('url'):
+            from urllib.parse import urlparse
+            try:host=urlparse(item['url']).hostname or '未知'
+            except ValueError:host='未知'
+            left.pack_start(label('媒体来源：'+host,'muted'),False,False,0)
         self.player_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.player_box.set_size_request(360,270);self.player_box.get_style_context().add_class('card');self.placeholder=MediaCover();self.player_box.pack_start(self.placeholder,True,True,0);
-        if item.get('thumbnail'):
+        if item.get('thumbnail') and item.get('source')!='podcast':
             if self.source_kind=='creator-local':self.load_cached_art(self.placeholder,item['thumbnail'])
             else:self.load_art(self.placeholder,item['thumbnail'])
         left.pack_start(self.player_box,False,False,0)
@@ -867,7 +920,7 @@ class App(Gtk.Window):
         else:row.pack_start(label('来源视频已失效，无法在线播放或下载' if item.get('unavailable') else '本地文件尚未下载或暂不可用','muted'),False,False,0)
         self.theater_button=icon_button('video-display-symbolic','影院模式',self.toggle_theater);self.fullscreen_button=icon_button('view-fullscreen-symbolic','全屏',self.toggle_fullscreen);row.pack_end(self.fullscreen_button,False,False,0);row.pack_end(self.theater_button,False,False,0);self.mode_row=row;self.control_row=Gtk.EventBox();self.control_row.add(row);self.player_box.pack_start(self.control_row,False,False,0)
         self.detail_left=left
-        origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站'}.get(item.get('source'),'其他来源');left.pack_start(label(item.get('title',''),'title'),False,False,0);left.pack_start(label(' · '.join(x for x in (item.get('channel'),origin) if x),'muted'),False,False,0);meta=label(' · '.join(str(x) for x in (item.get('published'),f"{int(item['duration']//60)}:{int(item['duration']%60):02d}" if item.get('duration') else None) if x) or '时间和时长暂无资料','muted');left.pack_start(meta,False,False,0);left.pack_start(label(item.get('description') or '没有可用的原始简介。'),False,False,0)
+        origin={'local':'本地文件','youtube':'YouTube','bilibili':'B 站','podcast':'播客'}.get(item.get('source'),'其他来源');left.pack_start(label(item.get('title',''),'title'),False,False,0);left.pack_start(label(' · '.join(x for x in (item.get('channel'),origin) if x),'muted'),False,False,0);meta=label(' · '.join(str(x) for x in (item.get('published'),f"{int(item['duration']//60)}:{int(item['duration']%60):02d}" if item.get('duration') else None) if x) or '时间和时长暂无资料','muted');left.pack_start(meta,False,False,0);left.pack_start(label(item.get('description') or '没有可用的原始简介。'),False,False,0)
         if item.get('url'):
             source=Gtk.LinkButton.new_with_label(item['url'],'查看来源');source.set_halign(Gtk.Align.START);left.pack_start(source,False,False,0)
         right=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10);self.detail_right=right;right.set_size_request(160,-1);right.pack_start(label('内容操作','section'),False,False,0)
@@ -892,7 +945,8 @@ class App(Gtk.Window):
             async_call(lambda:local_media_info(item['path']),show_info,lambda _:False)
 
     def return_rows(self):
-        if self.source_kind=='creator-local':self.open_creator(*self.creator_ref,query=self.rows_query)
+        if self.source_kind=='xiaoyuzhou-video':self.return_imported_programs(getattr(self,'xiaoyuzhou_context',None))
+        elif self.source_kind=='creator-local':self.open_creator(*self.creator_ref,query=self.rows_query)
         elif getattr(self,'active_nav','').startswith('collection:'):self.show_library(int(self.active_nav.split(':',1)[1]),self.rows_query)
         elif getattr(self,'active_nav','')=='library':self.show_library(query=self.rows_query)
         else:self.display_rows(self.rows_title,self.rows,query=self.rows_query)
@@ -920,6 +974,13 @@ class App(Gtk.Window):
         elif item.get('url') and not item.get('unavailable'):self.open_online(item,control)
         else:self.fail('本地文件不可用，来源也无法播放')
 
+    def playback_cookies(self,url):
+        if self.store.setting('bilibili_cookies',False) and self.store.setting('bilibili_auth_source','chrome')=='qr':
+            try:
+                if identify_url(url).get('source')=='bilibili':return 'bilibili_qr'
+            except ValueError:pass
+        return self.store.setting('cookies',False)
+
     def open_online(self,item,control):
         self.play_request+=1;request=self.play_request;generation=self.view_generation;control.set_sensitive(False);self.message('正在获取在线播放地址…')
         def done(stream):
@@ -932,7 +993,7 @@ class App(Gtk.Window):
                 control.set_sensitive(True)
                 if request==self.play_request:self.fail('在线播放失败：'+error)
             return False
-        async_call(lambda:downloader.online_stream(item['url'],self.store.setting('cookies',False)),done,failed)
+        async_call(lambda:downloader.online_stream(item['url'],self.playback_cookies(item['url'])),done,failed)
 
     def player_state(self,state):
         if not self.playing_online:return
@@ -1012,6 +1073,290 @@ class App(Gtk.Window):
             try:self.store.set_media_collections(mid,chosen);self.message('所属列表已更新')
             except ValueError as exc:self.fail(str(exc))
 
+    def show_podcasts(self):
+        self.clear_content();self.content.pack_start(page_heading('播客'),False,False,0)
+        self.content.pack_start(button('小宇宙 OPML 导入与 YouTube 匹配',lambda *_:self.show_xiaoyuzhou()),False,False,0)
+        self.content.pack_start(button('Apple Podcasts 文件导入与 YouTube 匹配',lambda *_:self.show_apple_podcasts()),False,False,0)
+        self.content.pack_start(label('搜索 Apple 公开节目，或粘贴 Apple 节目链接 / RSS 地址。查询会连接对应服务。'),False,False,0)
+        row=Gtk.Box(spacing=8);entry=Gtk.Entry();entry.set_placeholder_text('节目名称、Apple 节目链接或 RSS 地址');entry.set_hexpand(True);row.pack_start(entry,True,True,0)
+        row.pack_start(button('搜索或打开',lambda *_:self.podcast_query(entry.get_text().strip()),True),False,False,0);entry.connect('activate',lambda *_:self.podcast_query(entry.get_text().strip()));self.content.pack_start(row,False,False,0)
+        self.podcast_status=label('输入节目名称搜索，或打开公开订阅地址。');self.content.pack_start(self.podcast_status,False,False,0)
+        self.podcast_notice=label('','muted');self.content.pack_start(self.podcast_notice,False,False,0)
+        self.podcast_results=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.add(self.podcast_results);self.content.pack_start(scroll,True,True,0);self.content.show_all();self.podcast_entry=entry
+
+    def xiaoyuzhou_programs(self):
+        values=self.store.setting('xiaoyuzhou_programs',[])
+        if not isinstance(values,list) or any(not isinstance(x,dict) or not isinstance(x.get('feed_url'),str) or not isinstance(x.get('title'),str) for x in values):
+            raise ValueError('本地小宇宙节目数据损坏，未覆盖；请先备份设置并检查')
+        return values
+
+    @staticmethod
+    def imported_program_key(program):
+        return program.get('program_id') or program.get('feed_url')
+
+    def imported_programs(self):
+        if getattr(self,'import_source','xiaoyuzhou')!='apple-podcasts':return self.xiaoyuzhou_programs()
+        values=self.store.setting('apple_podcast_programs',[])
+        if not isinstance(values,list) or any(not isinstance(x,dict) or not isinstance(x.get('program_id'),str) or not x.get('program_id') or not isinstance(x.get('title'),str) for x in values):
+            raise ValueError('本地 Apple Podcasts 节目数据损坏，未覆盖；请先备份设置并检查')
+        return values
+
+    def save_imported_programs(self,programs):
+        self.store.set_setting('apple_podcast_programs' if getattr(self,'import_source','xiaoyuzhou')=='apple-podcasts' else 'xiaoyuzhou_programs',programs)
+
+    @staticmethod
+    def imported_program_back_label(program):
+        return '← 返回 Apple Podcasts 节目列表' if program and program.get('source')=='apple-podcasts' else '← 返回小宇宙节目列表'
+
+    def return_imported_programs(self,program):
+        if program and program.get('source')=='apple-podcasts':self.show_apple_podcasts()
+        else:self.show_xiaoyuzhou()
+
+    def show_apple_podcasts(self):
+        self.show_xiaoyuzhou('apple-podcasts')
+
+    def choose_apple_podcast_file(self):
+        self.choose_xiaoyuzhou_opml(apple=True)
+
+    def import_apple_podcast_file(self,path):
+        from . import apple_podcast_import
+        generation=self.view_generation;self.apple_import_request=getattr(self,'apple_import_request',0)+1;request=self.apple_import_request
+        self.xiaoyuzhou_status.get_style_context().remove_class('job-failed')
+        self.xiaoyuzhou_status.set_text('正在本机读取订阅文件…')
+        def failed(error):
+            if generation==self.view_generation and request==self.apple_import_request:
+                self.xiaoyuzhou_status.get_style_context().add_class('job-failed')
+                self.xiaoyuzhou_status.set_text('导入失败：'+error+'；原有节目保留。')
+            return False
+        def done(result):
+            if request!=self.apple_import_request:return False
+            try:
+                # Persist to Apple storage even if the user left this page while reading.
+                existing=self.store.setting('apple_podcast_programs',[])
+                if not isinstance(existing,list) or any(not isinstance(x,dict) or not isinstance(x.get('program_id'),str) or not x.get('program_id') or not isinstance(x.get('title'),str) for x in existing):raise ValueError('本地 Apple Podcasts 节目数据损坏，未覆盖')
+                by_id={x['program_id']:x for x in existing}
+                conflicts=0
+                for entry in result['entries']:
+                    identity=entry['program_id'];previous=by_id.get(identity,{})
+                    same_name=[x for x in existing if not x.get('feed_url') and x['title']==entry['title']]
+                    if not entry.get('feed_url') and same_name:
+                        # A title/ordinal cannot prove which subscription owns an old match.
+                        conflicts+=1;suffix=1;base=identity
+                        while identity in by_id:identity=base+':import-'+str(suffix);suffix+=1
+                        entry={**entry,'program_id':identity,'name_conflict':True,'identity_ambiguous':True};previous={}
+                    by_id[identity]={**previous,**entry,'source':'apple-podcasts'}
+                programs=list(by_id.values());self.store.set_setting('apple_podcast_programs',programs)
+                text=f"导入完成：本机共 {len(programs)} 个 Apple Podcasts 节目；已确认匹配和缺席节目已保留。跳过 {result.get('skipped',0)} 项，重复 {result.get('duplicates',0)} 项。"
+                if result.get('issues'):text+=' 部分条目无效或身份冲突，请检查导出文件。'
+                if conflicts:text+=' 无地址同名条目无法核实身份：旧记录保留，新记录需重新确认匹配。'
+                if generation==self.view_generation:self.render_xiaoyuzhou(programs);self.xiaoyuzhou_status.set_text(text)
+                self.message(text)
+            except Exception as exc:failed(str(exc))
+            return False
+        def read_local():
+            try:return apple_podcast_import.read_import(path)
+            except OSError:raise ValueError('文件不存在或无法读取，请重新选择') from None
+            except ValueError as exc:
+                if str(exc)=='无法解析 OPML 文件':raise ValueError('文件格式无法解析；可重新导出并检查节目名或地址中的特殊字符') from None
+                raise
+        async_call(read_local,done,failed)
+
+    def show_xiaoyuzhou(self,source='xiaoyuzhou'):
+        self.import_source=source;apple=source=='apple-podcasts'
+        self.clear_content();self.xiaoyuzhou_context=None;self.source_kind=source;self.select_nav('podcasts')
+        self.content.pack_start(page_heading('Apple Podcasts' if apple else '小宇宙'),False,False,0)
+        guidance=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10) if apple else self.content
+        guidance.pack_start(label('在 iPhone 用快捷指令导出 OPML，再传到本机选择；快捷指令可能随 iOS 版本变化，可能缺失无 RSS 节目，请核对节目数量。手动再次导入更新，缺席节目不会删除；无 RSS 的同名记录会另存为待核对条目，避免复用错误匹配。文件仅在本机读取，不连接 Apple 账号。' if apple else '从小宇宙导出 OPML 后选择文件；订阅更新需手动再次导入；导出可能不完整，缺席节目不会删除。文件仅在本机读取。','muted'),False,False,0)
+        if apple:
+            shortcut=Gtk.LinkButton.new_with_label('https://www.icloud.com/shortcuts/5e49239698c44e92baf94399df86b3f9','查看第三方导出快捷指令');shortcut.set_halign(Gtk.Align.START);guidance.pack_start(shortcut,False,False,0)
+            guidance.pack_start(label('在 iPhone 打开后可先查看操作再添加；运行时选择“保存到文件”，再把 OPML 传到本机。当前 iOS 实测待验证。','muted'),False,False,0)
+        guidance.pack_start(label('点击查找才会把该节目名称发送给 YouTube。候选需要你确认，不会自动匹配或自动同步。','muted'),False,False,0)
+        row=Gtk.Box(spacing=8);row.pack_start(button('选择 OPML 文件',lambda *_:self.choose_apple_podcast_file() if apple else self.choose_xiaoyuzhou_opml(),True),False,False,0);row.pack_start(button('返回播客',lambda *_:self.show_podcasts()),False,False,0);self.content.pack_start(row,False,False,0)
+        self.xiaoyuzhou_status=label('正在读取本机节目…','muted');self.content.pack_start(self.xiaoyuzhou_status,False,False,0)
+        self.xiaoyuzhou_results=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10);scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC)
+        if apple:
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14);body.pack_start(guidance,False,False,0);body.pack_start(self.xiaoyuzhou_results,False,False,0);scroll.add(body)
+        else:scroll.add(self.xiaoyuzhou_results)
+        self.xiaoyuzhou_scroll=scroll;self.content.pack_start(scroll,True,True,0)
+        try:self.render_xiaoyuzhou(self.imported_programs())
+        except ValueError as exc:self.xiaoyuzhou_status.set_text(str(exc))
+        self.content.show_all()
+        generation=self.view_generation
+        def restore_scroll():
+            if generation==self.view_generation:self.xiaoyuzhou_scroll.get_vadjustment().set_value(getattr(self,'xiaoyuzhou_scroll_value',0))
+            return False
+        GLib.idle_add(restore_scroll)
+
+    def choose_xiaoyuzhou_opml(self,apple=False):
+        dialog=Gtk.FileChooserDialog(title='选择 Apple Podcasts OPML 文件' if apple else '选择小宇宙 OPML 文件',transient_for=self,action=Gtk.FileChooserAction.OPEN)
+        dialog.add_buttons('取消',Gtk.ResponseType.CANCEL,'导入',Gtk.ResponseType.OK)
+        dialog.set_name('xiaoyuzhou-opml-chooser')
+        selection=label('尚未选择文件','muted');selection.set_max_width_chars(55);dialog.set_extra_widget(selection)
+        selection.show();dialog.set_response_sensitive(Gtk.ResponseType.OK,False)
+        def selected(chooser):
+            path=chooser.get_filename();valid=bool(path and Path(path).is_file())
+            selection.set_text('已选文件：'+Path(path).name if valid else '尚未选择文件')
+            chooser.set_response_sensitive(Gtk.ResponseType.OK,valid)
+        dialog.connect('selection-changed',selected)
+        provider=Gtk.CssProvider();provider.load_from_data(b'#xiaoyuzhou-opml-chooser treeview:selected, #xiaoyuzhou-opml-chooser treeview:selected:focus {background-color:#247f78;color:#ffffff;}')
+        Gtk.StyleContext.add_provider_for_screen(dialog.get_screen(),provider,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+1)
+        file_filter=Gtk.FileFilter();file_filter.set_name('OPML 文件');file_filter.add_pattern('*.opml');file_filter.add_pattern('*.xml');dialog.add_filter(file_filter)
+        response=dialog.run();path=dialog.get_filename();dialog.destroy();Gtk.StyleContext.remove_provider_for_screen(self.get_screen(),provider)
+        if response==Gtk.ResponseType.OK and path:
+            if apple:self.import_apple_podcast_file(path)
+            else:self.import_xiaoyuzhou_opml(path)
+
+    def import_xiaoyuzhou_opml(self,path):
+        from . import xiaoyuzhou_import
+        generation=self.view_generation;self.xiaoyuzhou_import_request=getattr(self,'xiaoyuzhou_import_request',0)+1;request=self.xiaoyuzhou_import_request
+        self.xiaoyuzhou_status.set_text('正在本机读取 OPML…')
+        def done(result):
+            if request!=self.xiaoyuzhou_import_request:return False
+            try:
+                existing=self.xiaoyuzhou_programs();by_url={x['feed_url']:x for x in existing}
+                for entry in result['entries']:
+                    previous=by_url.get(entry['feed_url'],{});by_url[entry['feed_url']]={**previous,**entry}
+                programs=list(by_url.values());self.store.set_setting('xiaoyuzhou_programs',programs)
+                text=f"导入完成：本机共 {len(programs)} 个节目；已确认选择已保留。跳过 {result.get('skipped',0)} 项，重复 {result.get('duplicates',0)} 项。"
+                if result.get('issues'):text+=' 部分条目无效，请检查导出文件。'
+                if generation==self.view_generation:self.render_xiaoyuzhou(programs);self.xiaoyuzhou_status.set_text(text)
+                self.message(text)
+            except Exception as exc:failed(str(exc))
+            return False
+        def failed(error):
+            if generation==self.view_generation and request==self.xiaoyuzhou_import_request:self.xiaoyuzhou_status.set_text('导入失败：'+error+'；原有节目保留。')
+            return False
+        def read_local():
+            try:return xiaoyuzhou_import.read_opml(path)
+            except OSError:raise ValueError('文件不存在或无法读取，请重新选择') from None
+        async_call(read_local,done,failed)
+
+    def render_xiaoyuzhou(self,programs):
+        self.xiaoyuzhou_cards={}
+        for child in self.xiaoyuzhou_results.get_children():self.xiaoyuzhou_results.remove(child)
+        self.xiaoyuzhou_status.get_style_context().remove_class('job-failed')
+        self.xiaoyuzhou_status.set_text(f'本机 {len(programs)} 个节目' if programs else '尚未导入节目。')
+        for local_index,program in enumerate(programs,1):
+            card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6);card.get_style_context().add_class('card')
+            title_button=button(program['title'],lambda _,p=program:self.open_xiaoyuzhou_program(p))
+            title_button.get_child().set_line_wrap(True);title_button.get_child().set_max_width_chars(45);title_button.set_tooltip_text(program['title']);title_button.get_accessible().set_name('查看节目：'+program['title'])
+            card.pack_start(title_button,False,False,0)
+            match=program.get('match');status=label(('来源：Apple Podcasts · '+(f'本地条目 #{local_index}（非节目身份） · ' if not program.get('feed_url') else '')+('同名身份无法核实 · ' if program.get('name_conflict') else '无 RSS，仅按名称记录 · ' if program.get('identity_ambiguous') else '') if program.get('source')=='apple-podcasts' else '')+('已确认：'+match.get('title','') if isinstance(match,dict) and match.get('confirmed') else '尚未确认 YouTube 匹配'),'muted');card.pack_start(status,False,False,0)
+            actions=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);actions.set_halign(Gtk.Align.START);search=button('查找 YouTube 候选',lambda _,p=program:self.search_xiaoyuzhou(p));actions.pack_start(search,False,False,0)
+            if isinstance(match,dict):actions.pack_start(button('在浏览器打开已确认结果',lambda _,m=match:self.open_xiaoyuzhou_match(m)),False,False,0)
+            if isinstance(match,dict) and match.get('confirmed'):actions.pack_start(button('在 MediaDesk 查看',lambda _,p=program:self.open_xiaoyuzhou_program(p),True),False,False,0)
+            card.pack_start(actions,False,False,0);self.xiaoyuzhou_results.pack_start(card,False,False,0);self.xiaoyuzhou_cards[self.imported_program_key(program)]=card
+        self.xiaoyuzhou_results.show_all()
+
+    def search_xiaoyuzhou(self,program):
+        self.xiaoyuzhou_open_request=getattr(self,'xiaoyuzhou_open_request',0)+1
+        from . import xiaoyuzhou_import
+        if not self.store.setting('youtube_account_enabled',True):
+            self.xiaoyuzhou_status.set_text('YouTube 已断开，请在设置中连接账号后再查找。');return
+        generation=self.view_generation;self.xiaoyuzhou_search_request=getattr(self,'xiaoyuzhou_search_request',0)+1;request=self.xiaoyuzhou_search_request
+        self.xiaoyuzhou_status.set_text('正在 YouTube 查找：'+program['title'])
+        def done(result):
+            if generation!=self.view_generation or request!=self.xiaoyuzhou_search_request:return False
+            candidates=result['candidates']
+            self.render_xiaoyuzhou(self.imported_programs());self.xiaoyuzhou_status.set_text(f"{program['title']}：{len(candidates)} 个候选，请核对后确认。" if candidates else '未找到候选；可重试或保留未匹配状态。')
+            owner=self.xiaoyuzhou_cards.get(self.imported_program_key(program))
+            if owner is None:return False
+            owner.pack_start(label('候选所属节目：'+program['title'],'section'),False,False,0)
+            for candidate in candidates:
+                row=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5);row.get_style_context().add_class('card')
+                row.pack_start(label(candidate.get('title') or '未命名候选'),False,False,0);row.pack_start(label({'channel':'频道','playlist':'播放列表','video':'单集 / 视频'}.get(candidate.get('kind'),'候选')+' · '+candidate.get('channel','')+' · 官方归属未验证','muted'),False,False,0)
+                row.pack_start(label(candidate['url'],'muted'),False,False,0);actions=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);actions.set_halign(Gtk.Align.START)
+                actions.pack_start(button('浏览器预览',lambda _,c=candidate:self.open_xiaoyuzhou_match(c)),False,False,0)
+                actions.pack_start(button('确认此匹配',lambda _,c=candidate:self.confirm_xiaoyuzhou_match(program,c)),False,False,0);row.pack_start(actions,False,False,0);owner.pack_start(row,False,False,0)
+            self.xiaoyuzhou_results.show_all();return False
+        def failed(error):
+            if generation==self.view_generation and request==self.xiaoyuzhou_search_request:self.xiaoyuzhou_status.set_text('查找失败：'+error+'；可重试，已确认选择保留。')
+            return False
+        async_call(lambda:xiaoyuzhou_import.search_youtube_candidates(program['title'],user_triggered=True),done,failed)
+
+    def confirm_xiaoyuzhou_match(self,program,candidate):
+        try:
+            programs=self.imported_programs();entry=next(x for x in programs if self.imported_program_key(x)==self.imported_program_key(program));entry['match']={**candidate,'confirmed':True};self.save_imported_programs(programs)
+            self.render_xiaoyuzhou(programs);self.xiaoyuzhou_status.set_text('已确认：'+candidate.get('title','')+'；可在 MediaDesk 查看、播放或下载。')
+        except Exception as exc:self.xiaoyuzhou_status.set_text('保存匹配失败：'+str(exc))
+
+    def open_xiaoyuzhou_program(self,program):
+        match=program.get('match')
+        if not isinstance(match,dict) or not match.get('confirmed'):
+            self.search_xiaoyuzhou(program);return
+        self.xiaoyuzhou_scroll_value=self.xiaoyuzhou_scroll.get_vadjustment().get_value()
+        self.use_xiaoyuzhou_match(match,program)
+
+    def use_xiaoyuzhou_match(self,candidate,program=None):
+        if not candidate.get('confirmed'):return
+        self.xiaoyuzhou_open_request=getattr(self,'xiaoyuzhou_open_request',0)+1;request=self.xiaoyuzhou_open_request
+        if candidate.get('kind')=='video':
+            if program is None:
+                self.podcast_add({'title':candidate.get('title') or 'YouTube 视频','channel':candidate.get('channel',''),'url':candidate['url'],'source':'youtube','source_id':candidate.get('source_id','')});return
+            try:
+                mid=self.store.save_source({'title':candidate.get('title') or program['title'],'channel':candidate.get('channel',''),'url':candidate['url'],'source':'youtube','source_id':candidate.get('source_id','')})
+                self.xiaoyuzhou_context=program;self.source_kind='xiaoyuzhou-video';self.rows=[self.store.get(mid)];self.rows_title=program['title']+' · YouTube 单集';self.rows_query='';self.navigation_matches=[0];self.open_row(0)
+                self.detail_nav.get_children()[0].set_label(self.imported_program_back_label(program))
+                heading=label(program['title']+' · YouTube 单集','section');heading.set_max_width_chars(55);self.content.pack_start(heading,False,False,0);self.content.reorder_child(heading,1);heading.show()
+            except Exception as exc:self.xiaoyuzhou_status.set_text('读取单集失败：'+str(exc))
+            return
+        if not self.store.setting('youtube_account_enabled',True):
+            self.xiaoyuzhou_status.set_text('YouTube 已断开，请在设置中连接账号后再查看。');return
+        if candidate.get('kind')=='playlist':self.load_source('playlist-items',candidate['source_id'],**({'program':program} if program else {}));return
+        if candidate.get('kind')!='channel':return
+        from . import xiaoyuzhou_import
+        generation=self.view_generation;self.xiaoyuzhou_status.set_text('正在读取已确认频道的上传列表…')
+        def done(playlist_id):
+            if generation==self.view_generation and request==self.xiaoyuzhou_open_request:self.load_source('playlist-items',playlist_id,**({'program':program} if program else {}))
+            return False
+        def failed(error):
+            if generation==self.view_generation and request==self.xiaoyuzhou_open_request:self.xiaoyuzhou_status.set_text('读取频道失败：'+error+'；可重试。')
+            return False
+        async_call(lambda:xiaoyuzhou_import.resolve_channel_uploads(candidate['source_id'],user_triggered=True),done,failed)
+
+    def open_xiaoyuzhou_match(self,candidate):
+        from urllib.parse import urlparse
+        url=candidate.get('url','');parsed=urlparse(url)
+        if parsed.scheme!='https' or parsed.hostname not in ('www.youtube.com','youtube.com','youtu.be') or parsed.username or parsed.password:
+            self.xiaoyuzhou_status.set_text('无法打开：不是有效的 YouTube HTTPS 地址。');return
+        try:Gio.AppInfo.launch_default_for_uri(url,None);self.xiaoyuzhou_status.set_text('已交给浏览器打开 YouTube；频道、播放列表或单集均在浏览器查看。')
+        except Exception as exc:self.xiaoyuzhou_status.set_text('打开失败：'+str(exc))
+
+    def podcast_query(self,query):
+        if not query:self.podcast_status.set_text('请输入节目名称或链接。');return
+        generation=self.view_generation;self.podcast_request=getattr(self,'podcast_request',0)+1;request=self.podcast_request
+        for child in self.podcast_results.get_children():self.podcast_results.remove(child)
+        self.podcast_status.set_text('正在读取…');self.podcast_notice.set_text('')
+        def fetch():
+            from . import podcasts
+            return podcasts.read_feed(query) if query.startswith(('http://','https://')) else podcasts.search(query)
+        def done(result):
+            if generation!=self.view_generation or request!=self.podcast_request:return False
+            if isinstance(result,dict):
+                episodes=result.get('episodes',[]);notice=result.get('notice') or ''
+                self.podcast_status.set_text(f"{result.get('title') or '节目'} · {len(episodes)} 集");self.podcast_notice.set_text(notice)
+                for episode in episodes:
+                    row=Gtk.Box(spacing=10);row.set_margin_top(6);row.set_margin_bottom(6);title=label(episode.get('title') or '未命名单集');title.set_max_width_chars(60);row.pack_start(title,True,True,0)
+                    row.pack_end(button('加入并查看',lambda _,item=episode:self.podcast_add(item)),False,False,0);self.podcast_results.pack_start(row,False,False,0);self.podcast_results.pack_start(Gtk.Separator(),False,False,0)
+                if not episodes:self.podcast_status.set_text(self.podcast_status.get_text()+' · 暂无可用单集')
+            else:
+                self.podcast_status.set_text(f'找到 {len(result)} 个节目' if result else '没有找到节目，请尝试其他名称。')
+                for item in result:
+                    row=Gtk.Box(spacing=10);row.set_margin_top(6);row.set_margin_bottom(6);description=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3);description.pack_start(label(item.get('title') or '未命名节目'),False,False,0);description.pack_start(label(item.get('channel') or '','muted'),False,False,0);row.pack_start(description,True,True,0)
+                    row.pack_end(button('查看单集',lambda _,i=item:self.podcast_query(i.get('feed_url') or i.get('url') or '')),False,False,0);self.podcast_results.pack_start(row,False,False,0);self.podcast_results.pack_start(Gtk.Separator(),False,False,0)
+            self.podcast_results.show_all();return False
+        def failed(error):
+            if generation==self.view_generation and request==self.podcast_request:self.podcast_status.set_text('读取失败：'+error+'。请检查地址或网络后重试。')
+            return False
+        async_call(fetch,done,failed)
+
+    def podcast_add(self,item):
+        try:mid=self.store.save_source(item)
+        except Exception as exc:self.podcast_status.set_text('加入失败：'+str(exc));return
+        self.show_library();idx=next((i for i,row in enumerate(self.rows) if row['id']==mid),None)
+        if idx is not None:self.open_row(idx);self.message('已加入媒体库，可播放或下载')
+        else:self.message('已加入媒体库')
+
     def add_url(self,*_):
         d=Gtk.Dialog(title='添加视频链接',transient_for=self,flags=Gtk.DialogFlags.MODAL);d.add_button('取消',Gtk.ResponseType.CANCEL);d.add_button('仅加入媒体库',Gtk.ResponseType.APPLY);d.add_button('在线播放',Gtk.ResponseType.YES);d.add_button('下载',Gtk.ResponseType.OK)
         area=d.get_content_area();area.set_border_width(16);entry=Gtk.Entry();entry.set_width_chars(48);entry.set_placeholder_text('粘贴 YouTube 或 B 站 BV 视频链接');entry.set_activates_default(True);area.pack_start(entry,False,False,0);d.set_default_response(Gtk.ResponseType.YES);d.show_all();response=d.run();url=entry.get_text().strip();d.destroy()
@@ -1021,8 +1366,8 @@ class App(Gtk.Window):
         if response==Gtk.ResponseType.OK:self.inspect_and_download(url);return
         generation=self.view_generation;online=response==Gtk.ResponseType.YES;self.message('正在获取在线播放地址…' if online else '正在获取视频资料…')
         def fetch():
-            stream=downloader.online_stream(url,self.store.setting('cookies',False)) if online else None
-            item=stream['item'] if stream else downloader.inspect(url,self.store.setting('cookies',False))
+            stream=downloader.online_stream(url,self.playback_cookies(url)) if online else None
+            item=stream['item'] if stream else downloader.inspect(url,self.playback_cookies(url))
             return self.store.save_source(item),stream
         def done(result):
             mid,stream=result
@@ -1038,10 +1383,10 @@ class App(Gtk.Window):
         def ready(item):
             if choose:return self.format_dialog(item)
             try:
-                self.downloader.start(item,self.store.setting('preference','quality'),self.store.setting('cookies',False));self.message('已按下载偏好加入任务')
+                self.downloader.start(item,self.store.setting('preference','quality'),self.playback_cookies(item['url']));self.message('已按下载偏好加入任务')
             except Exception as e:self.fail(str(e))
             return False
-        async_call(lambda:downloader.inspect(url,self.store.setting('cookies',False)),ready,lambda error:self.retry_message('获取视频资料失败：'+error,lambda:self.inspect_and_download(url,choose)))
+        async_call(lambda:downloader.inspect(url,self.playback_cookies(url)),ready,lambda error:self.retry_message('获取视频资料失败：'+error,lambda:self.inspect_and_download(url,choose)))
 
     def prepare_download(self,item):self.inspect_and_download(item['url'])
 
@@ -1063,7 +1408,7 @@ class App(Gtk.Window):
                     if not audio_only and selected.get('acodec') in (None,'none'):
                         if not aid:raise ValueError('仅画面格式需要选择音频进行合并')
                         fmt+='+'+aid
-                self.downloader.start(item,pref,self.store.setting('cookies',False),fmt or None,audio_only);self.message('下载已加入任务')
+                self.downloader.start(item,pref,self.playback_cookies(item['url']),fmt or None,audio_only);self.message('下载已加入任务')
             except Exception as e:self.fail(str(e))
         return False
 
@@ -1148,8 +1493,11 @@ class App(Gtk.Window):
         try:Gio.AppInfo.launch_default_for_uri(Path(path).resolve().as_uri(),None)
         except (GLib.Error,OSError) as exc:self.fail('无法打开本地文件或目录：'+str(exc))
 
+    def account_surface_active(self):
+        return bool(getattr(self,'account_status_widgets',None)) and ((not self.store.setting('setup_done',False) and self.setup_step==1) or getattr(self,'active_nav','') in ('settings','platform-youtube','platform-bilibili'))
+
     def account_text(self,source,state=None,error=''):
-        if source=='youtube' and not self.store.setting('youtube_account_enabled',True):return '已断开'
+        if source=='youtube' and not self.store.setting('youtube_account_enabled',True) and state not in ('checking','unknown'):return '已断开'
         if source=='bilibili' and not self.store.setting('bilibili_cookies',False):return '未授权读取 Chrome 登录状态'
         previous=self.store.setting('account_'+source,{}) or {};when=previous.get('verified_at');name=previous.get('name')
         suffix=(' · '+name if name else '')+(' · 上次验证 '+when if when else '')
@@ -1157,11 +1505,13 @@ class App(Gtk.Window):
         if state=='connected':return '已连接'+suffix
         if state=='unconnected':return '未连接 · 请连接 Google 账号'
         if state=='expired':return '需要重新连接 · 请重新授权'+suffix
-        if state=='unknown':return '暂时无法验证'+(' · '+error if error else '')+suffix
+        if state=='unknown':
+            if source=='youtube' and '缺少 Google OAuth 客户端配置' in error:return '连接失败：缺少 Google OAuth 客户端配置。请选择配置文件，或跳过并稍后连接。'
+            return '暂时无法验证'+(' · '+error if error else '')+'。请检查网络或登录状态后重试。'+suffix
         return ('上次验证成功'+suffix) if when else '尚未验证'
 
     def platform_status(self,source,state=None,error=''):
-        b=self.nav_buttons.get('platform-'+source)
+        b=getattr(self,'nav_buttons',{}).get('platform-'+source)
         if not b or not b.get_child():return
         title='YouTube' if source=='youtube' else 'B 站';text=self.account_text(source,state,error)
         short={'checking':'验证中','connected':'已连接','unconnected':'未连接','expired':'需重连','unknown':'无法验证'}.get(state,'未验证')
@@ -1174,12 +1524,13 @@ class App(Gtk.Window):
         self.account_status_widgets[source].set_text(self.account_text(source,state,error))
         if source=='bilibili':
             enabled=self.store.setting('bilibili_cookies',False)
-            self.bilibili_connect_button.set_label('断开连接' if enabled else '连接 B 站')
+            self.bilibili_connect_button.set_label('断开连接' if enabled else '使用 Chrome 连接')
         if source=='youtube':
             self.youtube_connect_button.set_label('尝试连接 Google 账号' if state=='expired' else '连接 Google 账号')
             enabled=self.store.setting('youtube_account_enabled',True)
-            self.youtube_connect_button.set_visible(not enabled or state in ('unconnected','expired'))
-            self.youtube_disconnect_button.set_visible(enabled and state!='unconnected')
+            self.youtube_import_button.set_visible(state=='unknown' and '缺少 Google OAuth 客户端配置' in error)
+            self.youtube_connect_button.set_visible(not enabled or state in ('unconnected','expired') or (state=='unknown' and '缺少 Google OAuth 客户端配置' in error))
+            self.youtube_disconnect_button.set_visible(enabled and state!='unconnected' and not (state=='unknown' and '缺少 Google OAuth 客户端配置' in error))
 
     def check_account(self,source,force=True):
         if source=='youtube' and not self.store.setting('youtube_account_enabled',True):
@@ -1198,7 +1549,7 @@ class App(Gtk.Window):
         def fetch():
             if source=='youtube':
                 values=sources.list_youtube('channel');return ((values[0].get('snippet') or {}).get('title') or '') if values else ''
-            values=[];bilibili.stream('status',values.extend);return values[0].get('name','') if values else ''
+            values=[];self.bilibili_stream('status',values.extend);return values[0].get('name','') if values else ''
         def done(name):
             if request!=self.account_checks[source]:return False
             self.account_inflight.pop(source,None);self.account_cache[source]=(time.monotonic(),'connected','')
@@ -1211,7 +1562,7 @@ class App(Gtk.Window):
             self.account_inflight.pop(source,None)
             state='unknown'
             if source=='youtube' and '需要连接 YouTube' in error:
-                config=Path(os.environ.get('MEDIADESK_GOOGLE_CONFIG',str(Path.home()/'.config/youtube-readonly')))
+                config=google_config_dir()
                 state='expired' if (config/'token.json').exists() else 'unconnected'
             elif source=='youtube' and 'HTTP 401' in error:state='expired'
             error=error if state=='unknown' else '';self.account_cache[source]=(time.monotonic(),state,error)
@@ -1220,12 +1571,78 @@ class App(Gtk.Window):
             return False
         async_call(fetch,done,failed)
 
+    def bilibili_stream(self,kind,on_page,fid=''):
+        if self.store.setting('bilibili_auth_source','chrome')=='qr':return bilibili.stream(kind,on_page,fid,auth_source='qr')
+        return bilibili.stream(kind,on_page,fid) if fid else bilibili.stream(kind,on_page)
+
+    def connect_bilibili_qr(self,*_):
+        if getattr(self,'bilibili_qr_dialog',None):return
+        if self.store.setting('bilibili_cookies',False):
+            old=self.store.setting('bilibili_auth_source','chrome')
+            confirm=Gtk.MessageDialog(transient_for=self,modal=True,message_type=Gtk.MessageType.QUESTION,buttons=Gtk.ButtonsType.NONE,text='切换 B 站账号连接方式？')
+            confirm.format_secondary_text('扫码成功后将改用扫码账号；Chrome 登录状态不会改变。' if old=='chrome' else '扫码成功后将替换当前保存的 B 站扫码账号。')
+            confirm.add_buttons('取消',Gtk.ResponseType.CANCEL,'继续扫码',Gtk.ResponseType.OK);response=confirm.run();confirm.destroy()
+            if response!=Gtk.ResponseType.OK:return
+        from .bilibili_login import QRLogin
+        login=QRLogin();cancelled=threading.Event()
+        dialog=Gtk.Dialog(title='扫码连接 B 站',transient_for=self,flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(360,420);dialog.add_button('取消',Gtk.ResponseType.CANCEL)
+        area=dialog.get_content_area();area.set_border_width(20);area.set_spacing(12)
+        area.pack_start(label('打开 B 站手机客户端扫码并确认。账号用于读取关注和收藏，以及你选择的 B 站播放和下载；登录信息保存在本机。'),False,False,0)
+        drawing=Gtk.Image();drawing.set_size_request(240,240);drawing.set_halign(Gtk.Align.CENTER);area.pack_start(drawing,False,False,0)
+        state=label('正在获取二维码…');area.pack_start(state,False,False,0)
+        def close(*_):
+            cancelled.set();login.cancel()
+            if getattr(self,'bilibili_qr_dialog',None) is dialog:self.bilibili_qr_dialog=None
+        dialog.connect('response',lambda d,_:d.destroy());dialog.connect('destroy',close)
+        self.bilibili_qr_dialog=dialog;dialog.show_all()
+        def update(result):
+            if cancelled.is_set():return False
+            status=result.get('state')
+            text={'waiting_scan':'等待扫码','waiting_confirm':'已扫码，请在手机上确认','expired':'二维码已过期，请关闭后重新扫码','cancelled':'已取消扫码','error':'连接失败，请检查网络后重试','success':'已收到授权，正在验证账号…'}.get(status,'连接失败，请关闭后重试')
+            state.set_text(text)
+            if status in ('expired','cancelled','error'):
+                dialog.get_widget_for_response(Gtk.ResponseType.CANCEL).set_label('关闭')
+            if status=='success':
+                self.store.set_setting('bilibili_auth_source','qr');self.store.set_setting('bilibili_cookies',True);self.account_cache.pop('bilibili',None)
+                if self.account_surface_active():self.check_account('bilibili')
+                else:self.message('B 站授权已保存，可在设置中验证账号')
+                dialog.destroy()
+            return False
+        def ready(data):
+            if cancelled.is_set():return False
+            size=len(data);cell=max(1,240//size);width=size*cell
+            pixels=b''.join((b''.join((b'\x00\x00\x00' if value else b'\xff\xff\xff')*cell for value in row))*cell for row in data)
+            drawing.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(pixels),GdkPixbuf.Colorspace.RGB,False,8,width,width,width*3));state.set_text('等待扫码');return False
+        def work():
+            try:
+                import qrcode
+                result=login.start()
+                if cancelled.is_set():return
+                if result.get('state')!='waiting_scan':GLib.idle_add(update,result);return
+                code=qrcode.QRCode(border=4,box_size=1);code.add_data(result['qr_url']);code.make(fit=True)
+                GLib.idle_add(ready,code.get_matrix())
+                while not cancelled.wait(2):
+                    result=login.poll()
+                    if cancelled.is_set():return
+                    GLib.idle_add(update,result)
+                    if result.get('state') not in ('waiting_scan','waiting_confirm'):return
+            except ImportError:
+                if not cancelled.is_set():GLib.idle_add(lambda:(state.set_text('二维码组件不可用，请联系发布者或使用 Chrome 连接。'),False)[1])
+            except Exception:
+                if not cancelled.is_set():GLib.idle_add(update,{'state':'error'})
+        threading.Thread(target=work,daemon=True).start()
+
     def toggle_bilibili_account(self,*_):
         enabled=self.store.setting('bilibili_cookies',False)
         dialog=Gtk.MessageDialog(transient_for=self,modal=True,message_type=Gtk.MessageType.QUESTION,buttons=Gtk.ButtonsType.NONE,text='断开 B 站账号？' if enabled else '连接 B 站账号？')
-        dialog.format_secondary_text('停止读取关注和收藏；已开始的读取可能继续。Chrome 登录、本地媒体和下载文件会保留；播放和下载 Cookie 设置不变。' if enabled else '允许 MediaDesk 读取 Chrome 中的 B 站登录状态，用于获取关注和收藏。')
+        dialog.format_secondary_text(('删除本机保存的 B 站扫码登录信息，停止读取账号；已开始的读取可能继续。Chrome 登录、本地媒体和下载文件会保留。' if self.store.setting('bilibili_auth_source','chrome')=='qr' else '停止读取关注和收藏；已开始的读取可能继续。Chrome 登录、本地媒体和下载文件会保留；播放和下载 Cookie 设置不变。') if enabled else '允许 MediaDesk 读取 Chrome 中的 B 站登录状态，用于获取关注和收藏。')
         dialog.add_buttons('取消',Gtk.ResponseType.CANCEL,'断开' if enabled else '允许并连接',Gtk.ResponseType.OK);response=dialog.run();dialog.destroy()
         if response!=Gtk.ResponseType.OK:return
+        if not enabled:self.store.set_setting('bilibili_auth_source','chrome')
+        elif self.store.setting('bilibili_auth_source','chrome')=='qr':
+            from .bilibili_login import QRLogin
+            QRLogin().clear_credentials()
         self.store.set_setting('bilibili_cookies',not enabled)
         if enabled:self.store.set_setting('account_bilibili',{})
         self.check_account('bilibili');self.message('B 站已断开' if enabled else '正在验证 B 站账号…')
@@ -1251,7 +1668,7 @@ class App(Gtk.Window):
         content.pack_start(label('账号与连接','section'),False,False,0);content.pack_start(label('账号读取及播放、下载会向对应平台发送必要请求。','muted'),False,False,0);self.account_status_widgets={}
         for source,title in [('youtube','YouTube'),('bilibili','B 站')]:
             card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8);card.get_style_context().add_class('card');card.pack_start(label(title,'section'),False,False,0)
-            state=label(self.account_text(source),'muted');self.account_status_widgets[source]=state;card.pack_start(state,False,False,0)
+            state=label(self.account_text(source));self.account_status_widgets[source]=state;card.pack_start(state,False,False,0)
             actions=Gtk.Box(spacing=8)
             if source=='youtube':
                 self.youtube_connect_button=button('连接 Google 账号',self.authorize)
@@ -1259,8 +1676,10 @@ class App(Gtk.Window):
                 actions.pack_start(self.youtube_connect_button,False,False,0)
                 self.youtube_disconnect_button=button('断开连接',self.disconnect_youtube)
                 self.youtube_disconnect_button.set_no_show_all(True);actions.pack_start(self.youtube_disconnect_button,False,False,0)
+                self.youtube_import_button=button('导入 Google 客户端配置',self.import_google_client);self.youtube_import_button.set_no_show_all(True);actions.pack_start(self.youtube_import_button,False,False,0)
             else:
-                self.bilibili_connect_button=button('连接 B 站',self.toggle_bilibili_account)
+                actions.pack_start(button('扫码连接 B 站',self.connect_bilibili_qr),False,False,0)
+                self.bilibili_connect_button=button('使用 Chrome 连接',self.toggle_bilibili_account)
                 actions.pack_start(self.bilibili_connect_button,False,False,0)
             actions.pack_start(button('刷新状态',lambda _,s=source:self.check_account(s)),False,False,0);card.pack_start(actions,False,False,0);content.pack_start(card,False,False,0)
         content.pack_start(Gtk.Separator(),False,False,4);content.pack_start(label('下载与播放','section'),False,False,0)
@@ -1313,6 +1732,7 @@ class App(Gtk.Window):
 
     def on_destroy(self,*_):
         self.view_generation+=1
+        if getattr(self,'bilibili_qr_dialog',None):self.bilibili_qr_dialog.destroy()
         self.hover_preview.stop()
         self.reset_shortcut()
         if self.player:self.player.close()
@@ -1321,14 +1741,13 @@ class App(Gtk.Window):
         if Gtk.main_level():Gtk.main_quit()
 
 def main():
-    import fcntl
+    from .instance import acquire
     from .store import data_dir
     root=data_dir();root.mkdir(parents=True,exist_ok=True,mode=0o700)
-    fd=os.open(root/'application.lock',os.O_CREAT|os.O_RDWR,0o600)
     try:
-        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        fd=acquire(root/'application.lock')
     except BlockingIOError:
-        d=Gtk.MessageDialog(message_type=Gtk.MessageType.INFO,buttons=Gtk.ButtonsType.OK,text='MediaDesk 已在运行');d.run();d.destroy();os.close(fd);return
+        d=Gtk.MessageDialog(message_type=Gtk.MessageType.INFO,buttons=Gtk.ButtonsType.OK,text='MediaDesk 已在运行');d.run();d.destroy();return
     try:
         win=App();win.show_all();Gtk.main()
     finally:os.close(fd)

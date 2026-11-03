@@ -1,0 +1,46 @@
+{
+  "date": "2026-11-02",
+  "payload": {
+    "files": 12857,
+    "bytes": 729678675,
+    "manifest_sha256": "5fbf7a67725a1cd519fba873bafcc0e4c2ee111001693d5252e414146ce0d45b",
+    "archive_bytes": 312726251,
+    "archive_sha256": "c4fddd482914b4b20cb6718587e9c95508a35563a706e964c82e3808b473317d"
+  },
+  "flat_copy": {
+    "source_verification_seconds": 4.34,
+    "copy_and_target_verification_seconds": 245.65,
+    "setup_seconds": 270.76
+  },
+  "native_zip": {
+    "source_archive_hash_seconds": 0.74,
+    "locked_archive_hash_seconds": 0.68,
+    "native_extraction_seconds": 15.89,
+    "target_verification_seconds": 207.15,
+    "setup_seconds": 251.74,
+    "full_uninstall_seconds": 16.65,
+    "doctor_ready": true,
+    "app_removed": true,
+    "runtime_removed": true,
+    "shortcut_removed": true,
+    "user_sentinel": "must-retain"
+  },
+  "immediate_readback_experiment": {
+    "status": "terminated_after_predeclared_improvement_condition_failed",
+    "sample_after_about_seconds": 224,
+    "sample_files": 511,
+    "sample_bytes": 220312362,
+    "last_log_progress": 4000,
+    "total_files": 12857,
+    "final_runtime_created": false,
+    "app_created": false,
+    "partial_retained": true,
+    "user_sentinel": "must-retain"
+  },
+  "limits": [
+    "One machine and one ordered pair; caches were not reset.",
+    "Native extraction time alone is not end-to-end install time.",
+    "Source of slow target reads was not established.",
+    "Physical desktop playback, sound and real account OAuth were not tested."
+  ]
+}

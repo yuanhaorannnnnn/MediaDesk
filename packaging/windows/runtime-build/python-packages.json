@@ -1,0 +1,152 @@
+[
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-certifi",
+    "version": "2026.10.23-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-certifi-2026.10.23-1-any.pkg.tar.zst",
+    "sha256": "04a063b9662cb2cfee50787e4a481363314a48ad29060818f0693d383c1369cb",
+    "license": [
+      "spdx:MPL-2.0"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-certifi-2026.10.23-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-cffi",
+    "version": "2.1.1-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-cffi-2.1.1-1-any.pkg.tar.zst",
+    "sha256": "051bd2f9c9eb7e547b5543665f2d133f0b623ac1a77aa1a81840505f8bb26d6a",
+    "license": [
+      "spdx:MIT"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-cffi-2.1.1-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-charset-normalizer",
+    "version": "3.5.2-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-charset-normalizer-3.5.2-1-any.pkg.tar.zst",
+    "sha256": "fd2b92b6623b86cbcd235148f30145ee0d9387a86cd49a0ab9f8f8be9e6e42a4",
+    "license": [
+      "spdx:MIT"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-charset-normalizer-3.5.2-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-cryptography",
+    "version": "50.0.2-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-cryptography-50.0.2-1-any.pkg.tar.zst",
+    "sha256": "00d258cf71739232942d0c4751e927c8b9ce84065ffbeca5bdf81bf141a62072",
+    "license": [
+      "spdx:BSD-3-Clause OR Apache-2.0"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-cryptography-50.0.2-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-google-auth",
+    "version": "2.62.0-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-google-auth-2.62.0-1-any.pkg.tar.zst",
+    "sha256": "112245df9689dba6b840a14151a290ac2a7d9876f2cfdb9acb7b1fe9ac4fd41c",
+    "license": [
+      "spdx:Apache-2.0"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-google-auth-2.62.0-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-google-auth-oauthlib",
+    "version": "1.5.0-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-google-auth-oauthlib-1.5.0-1-any.pkg.tar.zst",
+    "sha256": "dd07056109e4ef4245f11bbf6607951f44cf90148d8ff214de218fe776222510",
+    "license": [
+      "spdx:Apache-2.0"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-google-auth-oauthlib-1.5.0-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-idna",
+    "version": "3.20-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-idna-3.20-1-any.pkg.tar.zst",
+    "sha256": "fa0074ba72a46ec4fe29737ba9965cd11f60c436c16000b0325605db9f682f7f",
+    "license": [
+      "spdx:BSD-3-Clause"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-idna-3.20-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-oauthlib",
+    "version": "4.0.1-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-oauthlib-4.0.1-1-any.pkg.tar.zst",
+    "sha256": "be8085929358656edc1c489451a280053b4f250c1b1dbe3222a41bed59b6812f",
+    "license": [
+      "spdx:BSD-3-Clause"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-oauthlib-4.0.1-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-pyasn1",
+    "version": "0.6.5-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pyasn1-0.6.5-1-any.pkg.tar.zst",
+    "sha256": "4ae6eef6c66851c4c6330e8485610fc62b0e2788e56bb22aa6fac03ad78d485a",
+    "license": [
+      "spdx:BSD-2-Clause"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pyasn1-0.6.5-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-pyasn1-modules",
+    "version": "0.4.2-3",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pyasn1-modules-0.4.2-3-any.pkg.tar.zst",
+    "sha256": "c5901e936c515d9c1f6b8d0cf9f647cff8eb3e3a86b62a0735b92dcedd0d8081",
+    "license": [
+      "spdx:BSD-2-Clause"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pyasn1-modules-0.4.2-3-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-pycparser",
+    "version": "3.12-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pycparser-3.12-1-any.pkg.tar.zst",
+    "sha256": "d60c07d8f6e5cb677c736dbfb6fe9eeae6ec0715bfa0a05e751e7741bab9ae89",
+    "license": [
+      "spdx:BSD-3-Clause"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-pycparser-3.12-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-requests",
+    "version": "2.34.2-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-requests-2.34.2-1-any.pkg.tar.zst",
+    "sha256": "7a449d97dea8622455bd1065d3e81e5c32ad84b85d8ee0894ad5b5e5d4672cf7",
+    "license": [
+      "spdx:Apache-2.0"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-requests-2.34.2-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-requests-oauthlib",
+    "version": "2.0.0-4",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-requests-oauthlib-2.0.0-4-any.pkg.tar.zst",
+    "sha256": "911585d214322aa28ac79477d9534122318a48e2558d9c4e44c373951a273525",
+    "license": [
+      "spdx:ISC"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-requests-oauthlib-2.0.0-4-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-python-urllib3",
+    "version": "2.8.0-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-urllib3-2.8.0-1-any.pkg.tar.zst",
+    "sha256": "6310d118efb51e9bd14022aa8ddc600dd32ede5929f8d2f20c8c56474458bbf8",
+    "license": [
+      "spdx:MIT"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-urllib3-2.8.0-1-any.pkg.tar.zst.sig"
+  },
+  {
+    "package": "mingw-w64-ucrt-x86_64-yt-dlp-ejs",
+    "version": "0.8.0-1",
+    "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-yt-dlp-ejs-0.8.0-1-any.pkg.tar.zst",
+    "sha256": "436df70201a45f43df4334f5c2a159e0871f3487588d5464523d593a3e2ea30b",
+    "license": [
+      "spdx:Unlicense AND MIT AND ISC"
+    ],
+    "signature_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-yt-dlp-ejs-0.8.0-1-any.pkg.tar.zst.sig"
+  }
+]

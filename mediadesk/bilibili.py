@@ -11,17 +11,38 @@ from urllib.request import Request, build_opener, HTTPCookieProcessor, HTTPRedir
 from .downloader import environment, executable
 
 
+def cookie_error(exc):
+    if os.name!='nt':return '无法读取 Chrome 登录状态，请检查浏览器和系统密钥环'
+    chain=[];seen=set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc));chain.append(exc);exc=exc.__cause__ or exc.__context__
+    text='\n'.join(str(error).lower() for error in chain)
+    if 'could not find chrome cookies database' in text:
+        return '未发现 Chrome 登录数据，请在同一 Windows 用户的 Chrome 中登录 B 站后重试'
+    if any(isinstance(error,PermissionError) for error in chain) or 'could not copy chrome cookie database' in text:
+        return '无法读取 Chrome 登录数据库，请完全退出 Chrome 后刷新；若仍失败，请检查当前用户的读取权限'
+    if 'failed to decrypt with dpapi' in text or any(term in text for term in ('app-bound encryption','application-bound encryption','app bound encryption')):
+        return '当前环境无法解密 Chrome 的受保护登录状态；可先跳过 B 站账号连接'
+    return '无法读取 Chrome 登录状态，请在同一 Windows 用户的 Chrome 中登录 B 站，完全退出 Chrome 后刷新；若仍失败，可先跳过账号连接'
+
+
 class Client:
-    def __init__(self):
+    def __init__(self, auth_source="chrome"):
         import yt_dlp
         for key in ('DBUS_SESSION_BUS_ADDRESS','XDG_RUNTIME_DIR'):
             value=environment().get(key)
             if value:os.environ.setdefault(key,value)
         try:
-            self.ydl=yt_dlp.YoutubeDL({'quiet':True,'no_warnings':True,'cookiesfrombrowser':('chrome',None,'GNOMEKEYRING')})
-            jar=self.ydl.cookiejar
+            if auth_source == 'qr':
+                from .bilibili_login import CredentialStore
+                jar = CredentialStore().load()
+            elif auth_source != 'chrome':
+                raise ValueError('不支持的登录方式')
+            else:
+                self.ydl=yt_dlp.YoutubeDL({'quiet':True,'no_warnings':True,'cookiesfrombrowser':('chrome',None,None if os.name=='nt' else 'GNOMEKEYRING')})
+                jar=self.ydl.cookiejar
         except Exception as exc:
-            raise ValueError('无法读取 Chrome 登录状态，请检查浏览器和系统密钥环') from exc
+            raise ValueError(cookie_error(exc)) from None
         class SafeRedirect(HTTPRedirectHandler):
             def redirect_request(self,req,fp,code,msg,headers,newurl):
                 p=urlparse(newurl)
@@ -95,7 +116,7 @@ def normalize(item):
             'url':url,'source':'bilibili','unavailable':unavailable or not url}
 
 
-def stream(kind,on_page,fid=''):
+def stream(kind,on_page,fid='',auth_source='chrome'):
     if kind not in ('followings','folders','favorites','status'):raise ValueError('不支持的 B 站列表')
     interpreter=sys.executable
     try:
@@ -106,7 +127,7 @@ def stream(kind,on_page,fid=''):
     except (OSError,UnicodeError):pass
     env=environment();root=str(Path(__file__).resolve().parent.parent)
     env['PYTHONPATH']=root+(os.pathsep+env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
-    with subprocess.Popen([interpreter,'-m','mediadesk.bilibili',kind,str(fid)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env) as proc:
+    with subprocess.Popen([interpreter,'-m','mediadesk.bilibili',kind,str(fid),auth_source],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8' if os.name=='nt' else None,env=env,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0) as proc:
         try:
             for line in proc.stdout:
                 data=json.loads(line)
@@ -121,7 +142,7 @@ def stream(kind,on_page,fid=''):
 def main():
     def page(items):print(json.dumps(items,ensure_ascii=False),flush=True)
     try:
-        client=Client();kind=sys.argv[1]
+        client=Client(sys.argv[3] if len(sys.argv)>3 else 'chrome');kind=sys.argv[1]
         if kind=='status':page([{'name':client.name}])
         elif kind=='folders':page(client.folders())
         elif kind=='followings':client.followings(page)

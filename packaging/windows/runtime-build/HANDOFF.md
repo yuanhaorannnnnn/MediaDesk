@@ -21,7 +21,7 @@ Build helpers under `runtime-build/`: `stage-runtime.py`, `assemble-runtime.py`,
 
 ## Exact inputs on Windows
 
-SSH: `pc@172.16.18.162` with the already-authorized task key. All paths below start at `C:\Users\pc\AppData\Local\Temp\`:
+SSH: `<windows-host>` with the already-authorized task key. All paths below start at `C:\Users\pc\AppData\Local\Temp\`:
 
 | Input | Relative path |
 | --- | --- |

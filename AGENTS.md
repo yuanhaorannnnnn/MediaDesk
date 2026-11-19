@@ -20,6 +20,6 @@
 
 ## 上下文与成果
 
-不要假定 `/home/yhr`、`/media/yhr/2T`、本地全局 skills 或 Canon 自动存在。以当前 checkout 为项目根。只有当前环境实际提供的 skills、脚本和工具才算可用。
+不要假定固定的本地绝对路径、本地全局 skills 或 Canon 自动存在。以当前 checkout 为项目根。只有当前环境实际提供的 skills、脚本和工具才算可用。
 
 交付说明包含 base／结果 commit、变更路径、实际运行的检查、失败及未运行项、成果入口及 SHA256、本地验收 deferred 与后续步骤。Cloud VM 不是长期成果存储。
